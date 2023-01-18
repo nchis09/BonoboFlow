@@ -50,7 +50,7 @@ Note: make sure docker has at least 60GB available disk space, 6CPUS, 16GB memor
 
 
 ```bash
-git clone 
+git clone https://github.com/nchis09/BonoboFlow.git
 nextflow run bonoboflow.nf --help
 ```
 
@@ -132,13 +132,14 @@ Below is the list of tools that are used in the BonoboFlow pipeline. These tools
 + [samtools](https://github.com/samtools/samtools)
 + [bamtools](https://github.com/pezmaster31/bamtools)
 + [diamond](https://github.com/bbuchfink/diamond)
++ [isoncorrect](https://github.com/ksahlin/isONcorrect)
 
 
 
 
 ## Troubleshooting
 
-Kindly report any issues at 
+Kindly report any issues at https://github.com/nchis09/BonoboFlow/issues
 
 ## License
 
