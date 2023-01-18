@@ -7,10 +7,10 @@
 [![Twitter Follow](https://img.shields.io/twitter/follow/ndekezi09.svg?style=social)](https://twitter.com/ndekezi09) 
 
 
-##                      B O N O B O F L O W - P I P E L I N E
+## B O N O B O F L O W - P I P E L I N E
 
 
-     BonoboFlow PIPELINE for viral genome assemblypipeline from MinION 
+        BonoboFlow PIPELINE for viral genome assemblypipeline from MinION 
 
                                   sequenced reads
 
@@ -96,7 +96,7 @@ BonoboFlow can be run under different computing environments, simply choose an a
 
 **Pipeline information output**
 
-* `QuasiFlow_DAG.html`: Graphical representation of the pipeline's processes/operators and channels between them.
+* `Bonoboflow_DAG.html`: Graphical representation of the pipeline's processes/operators and channels between them.
 
 
 
