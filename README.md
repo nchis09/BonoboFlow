@@ -7,7 +7,7 @@
 [![Twitter Follow](https://img.shields.io/twitter/follow/ndekezi09.svg?style=social)](https://twitter.com/ndekezi09) 
 
 
-                      B O N O B O F L O W - P I P E L I N E
+##                      B O N O B O F L O W - P I P E L I N E
 
 
      BonoboFlow PIPELINE for viral genome assemblypipeline from MinION 
