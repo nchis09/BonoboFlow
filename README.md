@@ -39,11 +39,22 @@ BonoboFlow is a nextflow pipeline for reproducible analysis of
 
 ## Installation
 
-BonoboFlow requires **nextflow** (version 22.10.4), docker, Diamond (version  2.9.15 or higher), minimap2, samtools, bamtools, filtlong)
+BonoboFlow requires:
+ **nextflow** (version 22.10.4)
+ docker
+ Diamond (version  2.9.15 or higher)
+ minimap2
+ samtools
+ bamtools
+ filtlong
 
+for mac users we recommend to install nextflow, diamond, and isONcorrect as follow
+
+```bash
 conda create -n nextflow -c bioconda -c conda-forge openjdk=11.0.8 nextflow
-for mac uses we recommend to install diamond using homebrew "brew install diamond"
+brew install diamond
 pip install isONcorrect
+```
 
 
 Note: make sure docker has at least 60GB available disk space, 6CPUS, 16GB memory
