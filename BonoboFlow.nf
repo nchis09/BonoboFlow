@@ -99,8 +99,8 @@ process runBasecalling {
     
     output:
     path(basecalled)
-    path(demultipled), emit:  demultipled
-    path("demultipled/*/*.fastq")
+    path(demultiplexed), emit:  demultiplexed
+    path("demultiplexed/*/*.fastq")
     path("basecalled/*.fastq")
     path("basecalled/*.log")
     path("basecalled/sequencing_summary.txt")
@@ -108,7 +108,7 @@ process runBasecalling {
 
     script: 
     """
-    mkdir basecalled demultipled
+    mkdir basecalled demultiplexed
     guppy_basecaller -i ${in_fast5} \
         -s basecalled \
         --flowcell ${flowcell} \
@@ -116,7 +116,7 @@ process runBasecalling {
         --min_qscore 12 \
         --cpu_threads_per_caller "${params.cpu}"
     guppy_barcoder -i basecalled \
-        -s demultipled \
+        -s demultiplexed \
         --trim_barcodes \
         --barcode_kits "${params.barcods}" \
         --require_barcodes_both_ends -t "${params.cpu}"
@@ -133,16 +133,16 @@ process runMapping {
     publishDir "${params.outfile}", mode: "copy", overwrite: false
     
     input:
-    path(demultipled) 
+    path(demultiplexed) 
     val(ref_genome)
     val(lowerlength)
     
     output:
-    path("demultipled/*/*mapped_reads.fastq"), emit:  mapped
+    path("demultiplexed/*/*mapped_reads.fastq"), emit:  mapped
     
     script: 
     """
-    cd demultipled
+    cd demultiplexed
     for dir in bar*/; do
 		barcode_id=\${dir%*/}
 		cat \${dir}/*.fastq | \
@@ -169,14 +169,14 @@ process runErrcorrect {
 
     input:
     path(mapped)
-    path(demultipled)
+    path(demultiplexed)
     
     output:
-    path("demultipled/*/*_corrected.fastq"), emit:  correctedreads
+    path("demultiplexed/*/*_corrected.fastq"), emit:  correctedreads
    
     script: 
     """
-    cd demultipled
+    cd demultiplexed
     for dir in bar*/; do
 		barcode_id=\${dir%*/}
         isONclust --consensus --t "${params.cpu}" --ont \
@@ -201,17 +201,17 @@ process runAssembly {
 
 
     input:
-    path(demultipled)
+    path(demultiplexed)
     path(correctedreads)
     val(genomesize)
     
     output:
-    path("demultipled/*/*unitigs.fasta"), emit:  draftgenome
+    path("demultiplexed/*/*unitigs.fasta"), emit:  draftgenome
    
     script: 
     """
     
-    cd demultipled
+    cd demultiplexed
     for dir in bar*/; do
 		barcode_id=\${dir%*/}
         canu -d \${dir} \
@@ -233,16 +233,16 @@ process runPolish_medaka {
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
-    path(demultipled)
+    path(demultiplexed)
     path(draftgenome)
     path(mapped)
     
     output:
-    path("demultipled/*/*_consensus.fasta"), emit:  medaka_polishing
+    path("demultiplexed/*/*_consensus.fasta"), emit:  medaka_polishing
    
     script: 
     """
-    cd demultipled
+    cd demultiplexed
     for dir in bar*/; do
 		barcode_id=\${dir%*/}
         medaka_consensus -i \${dir}/\${barcode_id}_mapped_reads.fastq \
@@ -264,17 +264,17 @@ process runPolish_pilon {
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
-    path(demultipled)
+    path(demultiplexed)
     path(medaka_polishing)
     path(mapped)
     
     output:
-    path("demultipled/*/*_polishing.fasta"), emit:  pilon_polishing
-    path("demultipled/*/*.vcf")
+    path("demultiplexed/*/*_polishing.fasta"), emit:  pilon_polishing
+    path("demultiplexed/*/*.vcf")
    
     script: 
     """
-    cd demultipled
+    cd demultiplexed
     for dir in bar*/; do
 		barcode_id=\${dir%*/}  
         bwa index \${dir}/\${barcode_id}_consensus.fasta
@@ -303,18 +303,18 @@ process runProovframe {
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
-    path(demultipled)
+    path(demultiplexed)
     path(pilon_polishing)
     
     output:
-    path("demultipled/*/*_final_corrected.fasta"), emit: final_seq
+    path("demultiplexed/*/*_final_corrected.fasta"), emit: final_seq
     path(final_reports), emit: final_reports
    
    
     script: 
     """
     mkdir final_reports
-    cd demultipled
+    cd demultiplexed
     for dir in bar*/; do
 		barcode_id=\${dir%*/}
         "${baseDir}"/packages/proovframe-main/bin/proovframe map \
@@ -338,7 +338,7 @@ process runSeqrenaming {
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
-    path(demultipled)
+    path(demultiplexed)
     path(final_reports)
     path(final_seq)
     
@@ -347,17 +347,17 @@ process runSeqrenaming {
    
     script: 
     """    
-    cp demultipled/*/*_final_corrected.fasta final_reports
+    cp demultiplexed/*/*_final_corrected.fasta final_reports
     """
 }
 
 workflow{
    runBasecalling (params.in_fast5, params.kit, params.flowcell, params.barcods, params.cpu)
-   runMapping(runBasecalling.out.demultipled, params.ref_genome, params.lowerlength)   
-   runErrcorrect(runBasecalling.out.demultipled, runMapping.out.mapped)
-   runAssembly (runBasecalling.out.demultipled, runErrcorrect.out.correctedreads, params.genomesize)
-   runPolish_medaka (runBasecalling.out.demultipled, runAssembly.out.draftgenome, runMapping.out.mapped)
-   runPolish_pilon (runBasecalling.out.demultipled, runPolish_medaka.out.medaka_polishing, runMapping.out.mapped)
-   runProovframe (runBasecalling.out.demultipled, runPolish_pilon.out.pilon_polishing)
-   runSeqrenaming (runBasecalling.out.demultipled, runProovframe.out.final_seq, runProovframe.out.final_reports)
+   runMapping(runBasecalling.out.demultiplexed, params.ref_genome, params.lowerlength)   
+   runErrcorrect(runBasecalling.out.demultiplexed, runMapping.out.mapped)
+   runAssembly (runBasecalling.out.demultiplexed, runErrcorrect.out.correctedreads, params.genomesize)
+   runPolish_medaka (runBasecalling.out.demultiplexed, runAssembly.out.draftgenome, runMapping.out.mapped)
+   runPolish_pilon (runBasecalling.out.demultiplexed, runPolish_medaka.out.medaka_polishing, runMapping.out.mapped)
+   runProovframe (runBasecalling.out.demultiplexed, runPolish_pilon.out.pilon_polishing)
+   runSeqrenaming (runBasecalling.out.demultiplexed, runProovframe.out.final_seq, runProovframe.out.final_reports)
 }
