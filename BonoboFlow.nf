@@ -65,24 +65,29 @@ if (params.help){
 }
 
 
+// validation of parameters 
+
+ref = "${params.ref_genome}" 
+File genome = new File(ref)
+
+if (!genome.exists()){
+    error "Error: Reference genome is not specified or you have provided incorrect path"
+}
+
+fast5 = "${params.in_fast5}" 
+File input_seq = new File(fast5)
+
+if (!input_seq.exists()){
+    error "Error: Input fast5 path is not specified or you have provided incorrect path"
+}
+
+
 /*
 * Run Basecalling
 */
 
 process runBasecalling {
-    if (params.processor == 'CPU'  ) { 
-            container 'nanozoo/guppy_cpu'
-    }
-    else if (params.processor  == 'GPU') {
-            container 'natedolson/guppy_gpu'
-    }
-      else {
-            error "Invalid processor"
-      }
-
-    memory "${params.memory}"
-    cpus "${params.cpu}"
-    tag {"${fast5}"}
+    tag {"fast5"}
     publishDir "$params.outfile", mode: "copy", overwrite: false
             
     input:
@@ -109,7 +114,6 @@ process runBasecalling {
         --flowcell ${flowcell} \
         --kit ${kit} \
         --min_qscore 12 \
-        --hp_correct 1 \
         --cpu_threads_per_caller "${params.cpu}"
     guppy_barcoder -i basecalled \
         -s demultipled \
@@ -193,8 +197,6 @@ process runErrcorrect {
 
 process runAssembly {
     tag {"genome_assembly"}
-    memory "${params.memory}"
-    container 'staphb/canu-racon'
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
 
@@ -227,10 +229,7 @@ process runAssembly {
 */
 
 process runPolish_medaka {
-    cpus "${params.cpu}"
-    memory "${params.memory}"
     tag {"polish_medaka"}
-    container 'ontresearch/medaka'
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
@@ -261,9 +260,6 @@ process runPolish_medaka {
 */
 
 process runPolish_pilon {
-    cpus "${params.cpu}"
-    memory "${params.memory}"
-    container 'nanozoo/pilon'
     tag {"polish_pilon"}
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
@@ -302,8 +298,7 @@ process runPolish_pilon {
 */
 
 process runProovframe {
-    cpus "${params.cpu}"
-    memory "${params.memory}"
+    label 'small_mem'
     tag {"proovframe"}
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
@@ -339,8 +334,7 @@ process runProovframe {
 */
 
 process runSeqrenaming {
-    cpus "${params.cpu}"
-    memory "${params.memory}"
+    label 'small_mem'
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
@@ -356,8 +350,6 @@ process runSeqrenaming {
     cp demultipled/*/*_final_corrected.fasta final_reports
     """
 }
-
-
 
 workflow{
    runBasecalling (params.in_fast5, params.kit, params.flowcell, params.barcods, params.cpu)
