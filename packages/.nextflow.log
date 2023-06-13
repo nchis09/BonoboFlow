@@ -1,0 +1,11 @@
+Dec-24 16:20:04.669 [main] DEBUG nextflow.cli.Launcher - $> nextflow run nano_metagen.nf -resume --kit SQK-LSK109 --flowcell FLO-MIN106 --in_fast5 /Users/ndekezichristian/Desktop/nextflow_notes/nexflow_pipeline/fast5_test --outfile out_put --ref_genome /Users/ndekezichristian/Desktop/delete/hiv-db.fasta
+Dec-24 16:20:04.778 [main] INFO  nextflow.cli.CmdRun - N E X T F L O W  ~  version 20.10.0
+Dec-24 16:20:04.819 [main] DEBUG nextflow.cli.Launcher - Operation aborted
+nextflow.exception.AbortOperationException: Not a valid project name: nano_metagen.nf
+	at nextflow.scm.AssetManager.resolveName(AssetManager.groovy:256)
+	at nextflow.scm.AssetManager.build(AssetManager.groovy:131)
+	at nextflow.scm.AssetManager.<init>(AssetManager.groovy:109)
+	at nextflow.cli.CmdRun.getScriptFile(CmdRun.groovy:335)
+	at nextflow.cli.CmdRun.run(CmdRun.groovy:249)
+	at nextflow.cli.Launcher.run(Launcher.groovy:466)
+	at nextflow.cli.Launcher.main(Launcher.groovy:648)
