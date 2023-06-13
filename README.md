@@ -57,12 +57,13 @@ Note: make sure docker has at least 60GB available disk space, 6CPUS, 16GB memor
 
 ```bash
 git clone https://github.com/nchis09/BonoboFlow.git
+cd BonoboFlow
 nextflow run bonoboflow.nf --help
 ```
 
 ## Usage
 
-The pipeline takes in the fast5 file from Nanopore sequencing technology 
+The pipeline takes in the fastq file from Nanopore sequencing technology 
 
 ```bash
 conda activate nextflow
