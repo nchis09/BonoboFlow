@@ -72,9 +72,7 @@ nextflow run BonoboFlow.nf -resume --in_fastq <in put directory> --outfile <outp
     
 
     Mandatory arguments:
-      --kit                       Sequencit kit 
-      --flowcell                  Flowcell used during sequencing
-      --in_fast5                  Path to input fast5 dirctory 
+      --in_fastq                  Path to input fastq dirctory 
       --outfile                   Path to output directory
       --ref_genome                reference sequence
       --sample_id                 a csv file containing barcode_Ids and sample Ids
@@ -85,6 +83,12 @@ nextflow run BonoboFlow.nf -resume --in_fastq <in put directory> --outfile <outp
       --cpu                       cpus to used during the analyis. default is 8
       --lowerlength               set the lower length for input reads filter (default: 1000)
       --upperlength               set the upper length for input reads filter (default: 20000)
+      --cpu                       CPUs to be used during the analysis. The default is 8
+      --memory                    Memory allocated for each process. The default is 30 GB
+      --lowerlength               Set the lower length for input reads filter (default: 1000)
+      --upperlength               Set the upper length for input reads filter (default: 10000)
+      --pipeline                  Specify whether you want to do genome assembly or generate haplotype. The default is assembly
+      --genomesize                Only required if you are running genome assembly (default: 5k)
 
 ```
 
@@ -107,14 +111,13 @@ BonoboFlow can be run under different computing environments, simply choose an a
 
 
 
-## Parameters
+## input Parameters
 
 Mandatory parameters
 
-* `--kit `: Sequencit kit 
-* `--flowcell`:              Flowcell used during sequencing
-* `--in_fast5`:                Path to input fast5 dirctory 
-* `--ref_genome`:                reference sequence
+* `--in_fastq `:            Path to input fastq dirctory
+* `--sample_id`:           a csv file containing barcode_Ids and sample Ids
+* `--ref_genome`:           reference sequence
 
 
 Optional parameters
