@@ -26,8 +26,6 @@
 
                       =============================================
                          BonoboFlow  ~  version 1.0
-
-                                  Athours: Ndekezi Christian
                       ==============================================
 
 
@@ -42,20 +40,17 @@ BonoboFlow is a nextflow pipeline for reproducible analysis of
 BonoboFlow requires:
  **nextflow** (version 22.10.4)
  docker
- Diamond (version  2.9.15 or higher)
- minimap2
- samtools
- bamtools
- filtlong
+ singularity
 
-for mac users we recommend to install nextflow, diamond, and isONcorrect as follow
+
+
+
+We recommend to install the packages as follow
 
 ```bash
-conda create -n nextflow -c bioconda -c conda-forge openjdk=11.0.8 nextflow
-brew install diamond
-pip install isONcorrect
+conda create -n nextflow -c bioconda -c conda-forge openjdk=11.0.8 nextflow python
+conda activate nextflow
 ```
-
 
 Note: make sure docker has at least 60GB available disk space, 6CPUS, 16GB memory
 
@@ -70,12 +65,10 @@ nextflow run bonoboflow.nf --help
 The pipeline takes in the fast5 file from Nanopore sequencing technology 
 
 ```bash
+conda activate nextflow
 
-nextflow run BonoboFlow_2.nf -resume --kit <sequencing kit>\
-           --flowcell <flow cell used during sequencing> \
-           --cpu allocated_cpu --in_fast5 <directory to input files> \
-           --outfile <directory to output files> \
-           --ref_genome <directory to reference genome>
+nextflow run BonoboFlow.nf -resume --in_fastq <in put directory> --outfile <output directory> --ref_genome <reference genone.fasta> --lowerlength 1000 --upperlength 5000 -w <work directory> --sample_id <sample_id.csv> --kit <sequencing kit>  --flowcell <flow cell used during sequencing> 
+
     
 
     Mandatory arguments:
@@ -84,11 +77,14 @@ nextflow run BonoboFlow_2.nf -resume --kit <sequencing kit>\
       --in_fast5                  Path to input fast5 dirctory 
       --outfile                   Path to output directory
       --ref_genome                reference sequence
+      --sample_id                 a csv file containing barcode_Ids and sample Ids
 
     Other arguments:
-      --barcods                   barcods used during sequencing. The default barcoding kits are "EXP-NBD104 EXP-NBD114"
+      --barcods                   barcods used during sequencing. The default 
+                                  barcoding kits are "EXP-NBD104 EXP-NBD114"
       --cpu                       cpus to used during the analyis. default is 8
-      --lowerlength               set the lower length for input reads filter (default: 150)
+      --lowerlength               set the lower length for input reads filter (default: 1000)
+      --upperlength               set the upper length for input reads filter (default: 20000)
 
 ```
 
@@ -134,18 +130,6 @@ Optional parameters
 Mandatory parameters
 
 * `--outfile`:          Path to output directory
-
-## Dependancies.
-
-Below is the list of tools that are used in the BonoboFlow pipeline. These tools are readliy available and may be installed using `conda` via `bioconda` channel.
-
-+ [minimap2](https://github.com/lh3/minimap2)
-+ [samtools](https://github.com/samtools/samtools)
-+ [bamtools](https://github.com/pezmaster31/bamtools)
-+ [diamond](https://github.com/bbuchfink/diamond)
-+ [isoncorrect](https://github.com/ksahlin/isONcorrect)
-
-
 
 
 ## Troubleshooting

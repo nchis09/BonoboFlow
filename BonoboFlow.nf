@@ -1,4 +1,5 @@
 #!/usr/bin/env nextflow
+
 params.version = 1.0
 
 def helpMessage() {
@@ -9,52 +10,50 @@ Usage:
                         B O N O B O F L O W     - P I P E L I N E
 ========================================================================================
 
-  BonoboFlow PIPELINE for viral genome assembly pipeline from MinION sequenced reads
+BonoboFlow PIPELINE for viral genome assembly pipeline from MinION sequenced reads
 
-                ------------------------------------------------------
-
+           ------------------------------------------------------------
+ 
                       ------------------------------------------
-                
-                                --------------------
-                
-                                        -----
-                            
-                                          -
 
-                      =============================================
-                         BonoboFlow  ~  version ${params.version}
-                      =============================================
-    
-                     To run BonoboFlow follow the command bellow:
+                               --------------------
 
-nextflow run BonoboFlow.nf -resume --kit <sequencing kit> \
---flowcell <flow cell used during sequencing> \
---ref_genome <directory to reference genome> \
---input <directory to input files> \
+                                      -----
+
+                                        -
+
+=============================================
+BonoboFlow  ~  version ${params.version}
+=============================================
+
+To run BonoboFlow, use the following command:
+
+nextflow run BonoboFlow.nf -resume --ref_genome <directory to reference genome> \
+--in_fastq <directory to input files> \
 --outfile <directory to output files> \
---mode <mode to run the pipeline> \
---processor <processor to be used during the analysis>
-    
+--sample_id <csv of sample IDs and barcode ID> \
+-w <directory to save the work files>
 
-    Mandatory arguments:
-      --kit                       Sequencit kit 
-      --flowcell                  Flowcell used during sequencing
-      --in_fast5                  Path to input fast5 dirctory 
-      --outfile                   Path to output directory
-      --ref_genome                reference sequence
-      --mode                      mode for running the pipeline, defaults is FullPipeline, other mode include 
-                                  OnlyGenomeAssembly (for doing only full/half/nearfull genome assemly)
-                                  ORFprediction (for predicting coding region in the sequenced reads)
-      --process                   process to be used.  the default is CPU
 
-    Other arguments:
-      --barcods                   barcods used during sequencing. The default barcoding kits are "EXP-NBD104 EXP-NBD114"
-      --cpu                       cpus to used during the analyis. default is 8
-      --memory                    memory allocated for each process. default in 30 GB
-      --lowerlength               set the lower length for input reads filter (default: 150)
-.
-    """.stripIndent()
+Mandatory arguments:
+--in_fastq                  Path to the input fastq directory 
+--outfile                   Path to the output directory
+--ref_genome                Reference sequence
+--sample_id                 Provide a sample CSV file that has barcode names and sample IDs
+-w                          Provide a directory to save the work files. The default is the location that has the BonoboFlow.nf file
+
+Other arguments:
+--barcodes                  Barcodes used during sequencing. The default barcoding kits are "EXP-NBD104 EXP-NBD114"
+--cpu                       CPUs to be used during the analysis. The default is 8
+--memory                    Memory allocated for each process. The default is 30 GB
+--lowerlength               Set the lower length for input reads filter (default: 1000)
+--upperlength               Set the upper length for input reads filter (default: 10000)
+--pipeline                  Specify whether you want to do genome assembly or generate haplotype. The default is assembly
+--genomesize                Only required if you are running genome assembly (default: 5k)
+""".stripIndent()
 }
+
+helpMessage()
 
 
 // Show help emssage
@@ -65,98 +64,152 @@ if (params.help){
 }
 
 
-// validation of parameters 
+// Parameter validation 
 
 ref = "${params.ref_genome}" 
 File genome = new File(ref)
 
-if (!genome.exists()){
-    error "Error: Reference genome is not specified or you have provided incorrect path"
+if (!genome.exists()) {
+    error "Error: Reference genome is not specified or you have provided an incorrect path"
 }
 
-fast5 = "${params.in_fast5}" 
-File input_seq = new File(fast5)
+fastq = "${params.in_fastq}" 
+File input_seq = new File(fastq)
 
-if (!input_seq.exists()){
-    error "Error: Input fast5 path is not specified or you have provided incorrect path"
+if (!input_seq.exists()) {
+    error "Error: Input fastq path is not specified or you have provided an incorrect path"
 }
 
+sample_ids = "${params.sample_id}" 
+File sample_id_csv = new File(sample_ids)
+
+if (!sample_id_csv.exists()) {
+    error "Error: Input sample ID path is not specified or you have provided an incorrect path"
+}
 
 /*
-* Run Basecalling
+* Run porewerchop
 */
 
-process runBasecalling {
-    tag {"fast5"}
-    publishDir "$params.outfile", mode: "copy", overwrite: false
+process runPowerchop {
+    tag "fastq"
+    publishDir params.outfile, mode: "copy", overwrite: false
+    label 'bonobo_img'
             
     input:
-    path(in_fast5) 
-    val(kit)
-    val(flowcell)
-    val(barcods)
-    val(cpu)
+    path (in_fastq)
     
     output:
-    path(basecalled)
-    path(demultiplexed), emit:  demultiplexed
-    path("demultiplexed/*/*.fastq")
-    path("basecalled/*.fastq")
-    path("basecalled/*.log")
-    path("basecalled/sequencing_summary.txt")
+    path (input_files)
+    path (choped_seq), emit: choped
 
 
     script: 
     """
-    mkdir basecalled demultiplexed
-    guppy_basecaller -i ${in_fast5} \
-        -s basecalled \
-        --flowcell ${flowcell} \
-        --kit ${kit} \
-        --min_qscore 12 \
-        --cpu_threads_per_caller "${params.cpu}"
-    guppy_barcoder -i basecalled \
-        -s demultiplexed \
-        --trim_barcodes \
-        --barcode_kits "${params.barcods}" \
-        --require_barcodes_both_ends -t "${params.cpu}"
+    mkdir input_files choped_seq
+    cat ${in_fastq}/* > input_files/combined_input.fastq.gz
+    porechop -i input_files/combined_input.fastq.gz -t 14 -v 2 \
+    --extra_end_trim 0 --end_size 40 -o choped_seq/porechoped.fastq 
     """
 }
 
 /*
-* Run Barcodng
+* Run Barcoding
 */
-  
-process runMapping {
-    tag {"barcode_name"}
-    label 'small_mem'
-    publishDir "${params.outfile}", mode: "copy", overwrite: false
-    
+process runBarcoding {
+    tag "barcodes"
+    publishDir params.outfile, mode: "copy", overwrite: false
+            
     input:
-    path(demultiplexed) 
-    val(ref_genome)
-    val(lowerlength)
+    path (choped) 
+    val (barcods)
+    val (cpu)
     
     output:
-    path("demultiplexed/*/*mapped_reads.fastq"), emit:  mapped
-    
+    path(demultiplexed_dir), emit: demultiplexed
+    path("demultiplexed_dir/*/*.fastq")
+
     script: 
     """
-    cd demultiplexed
-    for dir in bar*/; do
-		barcode_id=\${dir%*/}
-		cat \${dir}/*.fastq | \
-        minimap2 -a ${ref_genome} /dev/stdin | \
-        samtools view -b | \
-        samtools sort | \
-        bamtools split -stub \${dir}/\${barcode_id}_align_sorted -mapped
-        samtools bam2fq \${dir}/\${barcode_id}_align_sorted.MAPPED.bam > \
-        \${dir}/\${barcode_id}_pre_mapped_reads.fastq
-        filtlong --min_length ${lowerlength} \${dir}/\${barcode_id}_pre_mapped_reads.fastq > \
-        \${dir}/\${barcode_id}_mapped_reads.fastq
-    done
+    mkdir demultiplexed_dir
+    guppy_barcoder -i "${choped}" -s demultiplexed_dir \
+    --barcode_kits "${barcods}" -t "${cpu}" --fastq_out --min_score_rear_override 75 --min_score 75 --trim_barcodes
+    find demultiplexed_dir -maxdepth 1 -type d -exec du -s {} \\; | awk '\$1 < 1000 {print \$2}' | \
+    xargs -I {} sh -c 'rm -rf {} && echo {} deleted' > demultiplexed_dir/deleted_directories.txt
     """
 }
+
+/*
+* Run Mapping
+*/
+
+process runMapping {
+    tag { "barcode_name" }
+    label 'bonobo_img'
+    publishDir path: "${params.outfile}", mode: "copy", overwrite: false
+
+    input:
+    path(demultiplexed)
+    file(ref_genome)
+    val(lowerlength)
+    val(upperlength)
+
+    output:
+    path("mapped_reads"), emit: mapped
+
+    script:
+    """
+    #!/usr/bin/env python
+
+    import os
+    import shutil
+    import subprocess
+
+    demultiplexed_dir = "${demultiplexed}"
+    ref_genome = "${ref_genome}"  # Use the provided reference genome value
+    lowerlength = "${lowerlength}"
+    upperlength = "${upperlength}"
+
+    output_dir = os.path.join(os.path.dirname(demultiplexed_dir), "mapped_reads")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Copy the reference genome to the demultiplexed folder
+    ref_genome_dest = os.path.join(demultiplexed_dir, os.path.basename(ref_genome))
+    shutil.copyfile(ref_genome, ref_genome_dest)
+
+    for dir in os.listdir(demultiplexed_dir):
+        if not dir.startswith("bar"):
+            continue
+
+        barcode_id = dir
+        dir_path = os.path.join(demultiplexed_dir, dir)
+
+        if dir == 'barcoding_summary.txt':  # Skip the barcoding_summary.txt file
+            continue
+
+        output_subdir = os.path.join(output_dir, dir)
+        os.makedirs(output_subdir, exist_ok=True)
+
+        # Run the mapping command
+        command = f"cat {dir_path}/*.fastq | \
+                    minimap2 -a {ref_genome_dest} /dev/stdin | \
+                    samtools view -b | \
+                    samtools sort > {output_subdir}/{barcode_id}_align_sorted.bam"
+        subprocess.run(command, shell=True, check=True)
+
+        # Convert the BAM file to FASTQ
+        bam_file = os.path.join(output_subdir, f"{barcode_id}_align_sorted.bam")
+        fq_file = os.path.join(output_subdir, f"{barcode_id}_pre_mapped_reads.fastq")
+        command = f"samtools bam2fq {bam_file} > {fq_file}"
+        subprocess.run(command, shell=True, check=True)
+
+        # Filter the reads based on length
+        mapped_file = os.path.join(output_subdir, f"{barcode_id}_mapped_reads.fastq")
+        command = f"filtlong --min_length {lowerlength} --max_length {upperlength} {fq_file} > {mapped_file}"
+        subprocess.run(command, shell=True, check=True)
+    """
+}
+
 
 /*
 * Run error_correction
@@ -169,25 +222,44 @@ process runErrcorrect {
 
     input:
     path(mapped)
-    path(demultiplexed)
-    
+
     output:
-    path("demultiplexed/*/*_corrected.fastq"), emit:  correctedreads
-   
-    script: 
+    path("error_correction"), emit: corrected
+
+    script:
     """
-    cd demultiplexed
-    for dir in bar*/; do
-		barcode_id=\${dir%*/}
-        isONclust --consensus --t "${params.cpu}" --ont \
-        --fastq \${dir}/\${barcode_id}_mapped_reads.fastq --outfolder \${dir}
-        isONclust write_fastq --N 1 --clusters \${dir}/final_clusters.tsv \
-        --fastq \${dir}/\${barcode_id}_mapped_reads.fastq --outfolder \${dir}/clusters
-        run_isoncorrect --t 7  --fastq_folder \${dir}/clusters \
-        --outfolder \${dir}/correction
-        cat \${dir}/correction/*/*.fastq > \
-        \${dir}/\${barcode_id}_corrected.fastq;
-    done
+    #!/usr/bin/env python
+
+    import os
+    import subprocess
+
+    mapped_dir = "${mapped}"
+    output_dir = os.path.join(os.path.dirname(mapped_dir), "error_correction")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Get the subdirectories in the mapped directory
+    subdirs = [d for d in os.listdir(mapped_dir) if os.path.isdir(os.path.join(mapped_dir, d))]
+
+    for subdir in subdirs:
+        if not subdir.startswith("bar"):
+            continue
+
+        subdir_path = os.path.join(mapped_dir, subdir)
+        output_subdir = os.path.join(output_dir, subdir)
+        os.makedirs(output_subdir, exist_ok=True)
+
+        # Run the error correction commands
+        command1 = f"${{baseDir}}/packages/RATTLE/rattle cluster -i {subdir_path}/{subdir}_mapped_reads.fastq -p 0.2 -t 8 --iso --repr-percentile 0.3 -o {output_subdir}"
+        subprocess.run(command1, shell=True, check=True)
+
+        command2 = f"${{baseDir}}/packages/RATTLE/rattle correct -i {subdir_path}/{subdir}_mapped_reads.fastq -c {output_subdir}/clusters.out -t 8 -o {output_subdir}"
+        subprocess.run(command2, shell=True, check=True)
+
+        # Move the corrected file
+        corrected_file = os.path.join(output_subdir, f"{subdir}_corrected.fastq")
+        os.makedirs(os.path.dirname(corrected_file), exist_ok=True)
+        command3 = f"mv {output_subdir}/corrected.fq {corrected_file}"
+        subprocess.run(command3, shell=True, check=True)
     """
 }
 
@@ -197,32 +269,107 @@ process runErrcorrect {
 
 process runAssembly {
     tag {"genome_assembly"}
+    label 'bonobo_img'
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
-
     input:
-    path(demultiplexed)
-    path(correctedreads)
+    path(corrected)
     val(genomesize)
     
     output:
-    path("demultiplexed/*/*unitigs.fasta"), emit:  draftgenome
+    path("assembly"), emit: draftgenome
+   
+    script:
+    """
+    #!/usr/bin/env python
+
+    import os
+    import subprocess
+
+    genomesize = "${genomesize}"
+    corrected_dir = "${corrected}"
+
+    output_dir = os.path.join(os.path.dirname(corrected_dir), "assembly")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Get the subdirectories in the corrected directory
+    subdirs = [d for d in os.listdir(corrected_dir) if os.path.isdir(os.path.join(corrected_dir, d))]
+
+    for subdir in subdirs:
+        if not subdir.startswith("bar"):
+            continue
+
+        subdir_path = os.path.join(corrected_dir, subdir)
+        output_subdir = os.path.join(output_dir, subdir)
+        os.makedirs(output_subdir, exist_ok=True)
+
+        # Run the assembly command
+        command1 = f"flye --meta --genome-size {genomesize} --nano-raw {subdir_path}/{subdir}_corrected.fastq --no-alt-contigs --out-dir {output_subdir}"
+        subprocess.run(command1, shell=True, check=True)
+        
+        # Move the assembly file
+        assembled_file = os.path.join(output_subdir, f"{subdir}_contigs.fasta")
+        os.makedirs(os.path.dirname(assembled_file), exist_ok=True)
+        command2 = f"mv {output_subdir}/assembly.fasta {assembled_file}"
+        subprocess.run(command2, shell=True, check=True)
+
+    """
+}
+
+/*
+* Run haplotype
+*/
+
+process runHaplotype {
+    tag {"genome_haplotype"}
+    label 'bonobo_img'
+    publishDir "${params.outfile}", mode: "copy", overwrite: false
+
+    input:
+    path(corrected)
+    
+    output:
+    path("haplotype"), emit: draftgenome
    
     script: 
     """
-    
-    cd demultiplexed
-    for dir in bar*/; do
-		barcode_id=\${dir%*/}
-        canu -d \${dir} \
-             -p \${barcode_id} genomeSize=${genomesize} \
-             -nanopore-corrected \${dir}/\${barcode_id}_corrected.fastq  \
-             useGrid=false minReadLength=200  \
-             minOverlapLength=100 \
-             stopOnLowCoverage=0
-    done
+    #!/usr/bin/env python
+
+    import os
+    import subprocess
+
+    corrected_dir = "${corrected}"
+
+    output_dir = os.path.join(os.path.dirname(corrected_dir), "haplotype")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Get the subdirectories in the corrected directory
+    subdirs = [d for d in os.listdir(corrected_dir) if os.path.isdir(os.path.join(corrected_dir, d))]
+
+    for subdir in subdirs:
+        if not subdir.startswith("bar"):
+            continue
+
+        subdir_path = os.path.join(corrected_dir, subdir)
+        output_subdir = os.path.join(output_dir, subdir)
+        os.makedirs(output_subdir, exist_ok=True)
+
+        # Run the seqtk command
+        command1 = f"seqtk seq -A {subdir_path}/{subdir}_corrected.fastq > {output_subdir}/{subdir}_corrected.fasta"
+        subprocess.run(command1, shell=True, check=True)
+
+        # Run the strainline command
+        command2 = f"/app/Strainline/src/strainline.sh -i {output_subdir}/{subdir}_corrected.fasta -o {output_subdir} -p ont --maxLD 0.01 --rmMisassembly True"
+        subprocess.run(command2, shell=True, check=True)
+        
+        # Move the haplotype file
+        haplotype_file = os.path.join(output_subdir, f"{subdir}_contigs.fasta")
+        os.makedirs(os.path.dirname(haplotype_file), exist_ok=True)
+        command3 = f"mv {output_subdir}/haplotypes.final.fa {haplotype_file}"
+        subprocess.run(command3, shell=True, check=True)
     """
 }
+
 
 /*
 * Run polishing_medaka
@@ -233,25 +380,59 @@ process runPolish_medaka {
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
-    path(demultiplexed)
     path(draftgenome)
     path(mapped)
     
     output:
-    path("demultiplexed/*/*_consensus.fasta"), emit:  medaka_polishing
+    path("medaka"), emit: medaka
    
     script: 
     """
-    cd demultiplexed
-    for dir in bar*/; do
-		barcode_id=\${dir%*/}
-        medaka_consensus -i \${dir}/\${barcode_id}_mapped_reads.fastq \
-                         -d \${dir}/\${barcode_id}.unitigs.fasta \
-                         -o \${dir} \
-                         -t 8
-        mv \${dir}/consensus.fasta \
-           \${dir}/\${barcode_id}_consensus.fasta
-    done
+    #!/usr/bin/env python
+
+    import os
+    import subprocess
+
+    mapped_dir = "${mapped}"
+    assembled_dir = "${draftgenome}"
+
+    output_dir = os.path.join(os.path.dirname(assembled_dir), "medaka")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Get the subdirectories in the assembled directory
+    subdirs = [d for d in os.listdir(assembled_dir) if os.path.isdir(os.path.join(assembled_dir, d))]
+
+    for subdir in subdirs:
+        if not subdir.startswith("bar"):
+            continue
+
+        subdir_path = os.path.join(assembled_dir, subdir)
+        output_subdir = os.path.join(output_dir, subdir)
+        os.makedirs(output_subdir, exist_ok=True)
+
+        # Get the corresponding mapped file
+        mapped_file = os.path.join(mapped_dir, subdir, f"{subdir}_mapped_reads.fastq")
+
+        # Print the file paths for debugging
+        print("Assembled contigs file:", os.path.join(subdir_path, f"{subdir}_contigs.fasta"))
+        print("Mapped reads file:", mapped_file)
+
+        # Check the file sizes for debugging
+        print("Assembled contigs file size:", os.path.getsize(os.path.join(subdir_path, f"{subdir}_contigs.fasta")))
+        print("Mapped reads file size:", os.path.getsize(mapped_file))
+
+        # Run the medaka command
+        command1 = f"medaka_consensus -i {mapped_file} \
+                         -d {subdir_path}/{subdir}_contigs.fasta \
+                         -o {output_subdir} \
+                         -t 8"
+        subprocess.run(command1, shell=True, check=True)
+        
+        # Move the medaka file
+        polish_medaka_file = os.path.join(output_subdir, f"{subdir}_polish_medaka.fasta")
+        os.makedirs(os.path.dirname(polish_medaka_file), exist_ok=True)
+        command2 = f"mv {output_subdir}/consensus.fasta {polish_medaka_file}"
+        subprocess.run(command2, shell=True, check=True)
     """
 }
 
@@ -264,70 +445,115 @@ process runPolish_pilon {
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
-    path(demultiplexed)
-    path(medaka_polishing)
+    path(medaka)
     path(mapped)
     
     output:
-    path("demultiplexed/*/*_polishing.fasta"), emit:  pilon_polishing
-    path("demultiplexed/*/*.vcf")
+    path("pilon"), emit: pilon
    
     script: 
     """
-    cd demultiplexed
-    for dir in bar*/; do
-		barcode_id=\${dir%*/}  
-        bwa index \${dir}/\${barcode_id}_consensus.fasta
-        bwa mem -t7 \${dir}/\${barcode_id}_consensus.fasta \${dir}/\${barcode_id}_mapped_reads.fastq | \
-        samtools sort  -@ 7 | \
-        samtools markdup /dev/stdin \${dir}/\${barcode_id}_cons_ali_filter.bam
-        samtools view -b -@ 7 -q 30 \${dir}/\${barcode_id}_cons_ali_filter.bam \
-                      -o \${dir}/\${barcode_id}_cons_ali_dup_filter.bam
-        samtools index -@ 7 \${dir}/\${barcode_id}_cons_ali_dup_filter.bam
-        pilon -Xmx4096m -XX:-UseGCOverheadLimit \
-              --genome \${dir}/\${barcode_id}_consensus.fasta \
-              --unpaired \${dir}/\${barcode_id}_cons_ali_dup_filter.bam \
-              --output \${dir}/\${barcode_id}_polishing \
-              --vcf;
-    done
+    #!/usr/bin/env python
+
+    import os
+    import subprocess
+
+    mapped_dir = "${mapped}"
+    polished = "${medaka}"
+
+    output_dir = os.path.join(os.path.dirname(polished), "pilon")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Get the subdirectories in the assembled directory
+    subdirs = [d for d in os.listdir(polished) if os.path.isdir(os.path.join(polished, d))]
+
+    for subdir in subdirs:
+        if not subdir.startswith("bar"):
+            continue
+
+        subdir_path = os.path.join(polished, subdir)
+        output_subdir = os.path.join(output_dir, subdir)
+        os.makedirs(output_subdir, exist_ok=True)
+
+        # Get the corresponding mapped file
+        mapped_file = os.path.join(mapped_dir, subdir, f"{subdir}_mapped_reads.fastq")
+
+        # Print the file paths for debugging
+        print("Assembled contigs file:", os.path.join(subdir_path, f"{subdir}_polish_medaka.fasta"))
+        print("Mapped reads file:", mapped_file)
+
+        # Check the file sizes for debugging
+        print("Assembled contigs file size:", os.path.getsize(os.path.join(subdir_path, f"{subdir}_polish_medaka.fasta")))
+        print("Mapped reads file size:", os.path.getsize(mapped_file))
+
+        # Run the pilon command
+        command1 = f"bwa index {subdir_path}/{subdir}_polish_medaka.fasta && \
+                     bwa mem -t7 {subdir_path}/{subdir}_polish_medaka.fasta {mapped_file} | \
+                     samtools sort -@ 7 | \
+                     samtools markdup /dev/stdin {output_subdir}/{subdir}_cons_ali_filter.bam && \
+                     samtools view -b -@ 7 -q 30 {output_subdir}/{subdir}_cons_ali_filter.bam \
+                                          -o {output_subdir}/{subdir}_cons_ali_dup_filter.bam && \
+                     samtools index -@ 7 {output_subdir}/{subdir}_cons_ali_dup_filter.bam && \
+                     pilon -Xmx4096m -XX:-UseGCOverheadLimit \
+                           --genome {subdir_path}/{subdir}_polish_medaka.fasta \
+                           --unpaired {output_subdir}/{subdir}_cons_ali_dup_filter.bam \
+                           --output {output_subdir}/{subdir}_polishing \
+                           --vcf"
+        subprocess.run(command1, shell=True, check=True)
     """
 }
 
+
 /*
-* Run polishing_homopolish
+* Run polishing_prooveframe
 */
 
+
 process runProovframe {
-    label 'small_mem'
+    label 'bonobo_img'
     tag {"proovframe"}
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
-    path(demultiplexed)
-    path(pilon_polishing)
+    path(pilon)
     
     output:
-    path("demultiplexed/*/*_final_corrected.fasta"), emit: final_seq
-    path(final_reports), emit: final_reports
-   
+    path("proovframe"), emit: final_seq
    
     script: 
     """
-    mkdir final_reports
-    cd demultiplexed
-    for dir in bar*/; do
-		barcode_id=\${dir%*/}
-        "${baseDir}"/packages/proovframe-main/bin/proovframe map \
-        -a "${baseDir}"/db/viral_aa/viral_aa_ref_Seq.fasta \
-        -o \${dir}/\${barcode_id}.tsv \
-        \${dir}/\${barcode_id}_polishing.fasta
-        "${baseDir}"/packages/proovframe-main/bin/proovframe fix \
-        -o \${dir}/\${barcode_id}_final_corrected.fasta \
-        \${dir}/\${barcode_id}_polishing.fasta \
-        \${dir}/\${barcode_id}.tsv
-    done
+    #!/usr/bin/env python
+
+    import os
+    import subprocess
+
+    polished = "${pilon}"
+
+    output_dir = os.path.join(os.path.dirname(polished), "proovframe")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Get the subdirectories in the polished directory
+    subdirs = [d for d in os.listdir(polished) if os.path.isdir(os.path.join(polished, d))]
+
+    for subdir in subdirs:
+        if not subdir.startswith("bar"):
+            continue
+
+        subdir_path = os.path.join(polished, subdir)
+        output_subdir = os.path.join(output_dir, subdir)
+        os.makedirs(output_subdir, exist_ok=True)
+
+        # Run the proovframe commands
+        command1 = f"proovframe map -a /app/db/viral_aa/viral_aa_ref_Seq.fasta \
+                    -o {output_subdir}/{subdir}.tsv \
+                    {subdir_path}/{subdir}_polishing.fasta && \
+                    proovframe fix -o {output_subdir}/{subdir}.fasta \
+                    {subdir_path}/{subdir}_polishing.fasta \
+                    {output_subdir}/{subdir}.tsv"
+        subprocess.run(command1, shell=True, check=True)
     """
 }
+
 
 /*
 * Run renaming sequence
@@ -338,26 +564,81 @@ process runSeqrenaming {
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
-    path(demultiplexed)
-    path(final_reports)
-    path(final_seq)
+    path(proovframe)
+    path(sample_id)
     
     output:
-    path("final_reports/*.fasta")   
+    path("final_reports/*.fasta")
    
-    script: 
-    """    
-    cp demultiplexed/*/*_final_corrected.fasta final_reports
+    script:
+    """
+    #!/usr/bin/env python
+
+    import os
+    import csv
+    import shutil
+
+    # Create the final_reports directory
+    os.makedirs("final_reports", exist_ok=True)
+
+    # Get the subdirectories within the proovframe directory
+    subdirs = [d for d in os.listdir("${proovframe}") if os.path.isdir(os.path.join("${proovframe}", d))]
+
+    # Copy the fasta files to the final_reports directory
+    for subdir in subdirs:
+        subdir_path = os.path.join("${proovframe}", subdir)
+        fasta_files = [f for f in os.listdir(subdir_path) if os.path.isfile(os.path.join(subdir_path, f)) and f.endswith('.fasta')]
+
+        for fasta_file in fasta_files:
+            fasta_file_path = os.path.join(subdir_path, fasta_file)
+            new_file_path = os.path.join(os.getcwd(), "final_reports", fasta_file)
+            shutil.copy(fasta_file_path, new_file_path)
+
+    # Read the CSV file and create the mapping
+    mapping = {}
+    with open("${sample_id}", "r") as csv_file:
+        csv_reader = csv.reader(csv_file)
+        next(csv_reader)  # Skip the header row
+        for row in csv_reader:
+            barcodeID = row[0].strip()
+            newSampleID = row[1].strip()
+            mapping[barcodeID] = newSampleID
+
+    # Rename the copied FASTA files
+    final_reports_dir = os.path.join(os.getcwd(), "final_reports")
+    fasta_files = [f for f in os.listdir(final_reports_dir) if os.path.isfile(os.path.join(final_reports_dir, f)) and f.endswith('.fasta')]
+
+    for fasta_file in fasta_files:
+        barcodeID = fasta_file.split(".")[0]
+        newSampleID = mapping.get(barcodeID)
+
+        if newSampleID is not None:
+            new_file_name = f"{newSampleID}.fasta"
+            new_file_path = os.path.join(final_reports_dir, new_file_name)
+
+            # Rename the file
+            os.rename(os.path.join(final_reports_dir, fasta_file), new_file_path)
     """
 }
 
-workflow{
-   runBasecalling (params.in_fast5, params.kit, params.flowcell, params.barcods, params.cpu)
-   runMapping(runBasecalling.out.demultiplexed, params.ref_genome, params.lowerlength)   
-   runErrcorrect(runBasecalling.out.demultiplexed, runMapping.out.mapped)
-   runAssembly (runBasecalling.out.demultiplexed, runErrcorrect.out.correctedreads, params.genomesize)
-   runPolish_medaka (runBasecalling.out.demultiplexed, runAssembly.out.draftgenome, runMapping.out.mapped)
-   runPolish_pilon (runBasecalling.out.demultiplexed, runPolish_medaka.out.medaka_polishing, runMapping.out.mapped)
-   runProovframe (runBasecalling.out.demultiplexed, runPolish_pilon.out.pilon_polishing)
-   runSeqrenaming (runBasecalling.out.demultiplexed, runProovframe.out.final_seq, runProovframe.out.final_reports)
+
+workflow {
+   runPowerchop(params.in_fastq)
+   runBarcoding(runPowerchop.out.choped, params.barcods, params.cpu)
+   runMapping(runBarcoding.out.demultiplexed, params.ref_genome, params.lowerlength, params.upperlength)
+   runErrcorrect( runMapping.out.mapped)
+
+      if (params.pipeline == 'assembly') {
+       runAssembly(runErrcorrect.out.corrected, params.genomesize)
+       runPolish_medaka(runAssembly.out.draftgenome, runMapping.out.mapped)
+   }
+
+     else if (params.pipeline == 'haplotype') {
+       runHaplotype(runErrcorrect.out.corrected)
+       runPolish_medaka(runHaplotype.out.draftgenome, runMapping.out.mapped)
+   }
+
+   runPolish_pilon(runPolish_medaka.out.medaka, runMapping.out.mapped)
+   runProovframe(runPolish_pilon.out.pilon)
+   runSeqrenaming(runProovframe.out.final_seq, params.sample_id)
 }
