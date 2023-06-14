@@ -43,11 +43,12 @@ BonoboFlow requires:
  singularity
 
 
-
-
 We recommend to install the packages as follow
 
 ```bash
+git clone https://github.com/nchis09/BonoboFlow.git
+cd BonoboFlow_main/packages/RATTLE
+./build.sh
 conda create -n nextflow -c bioconda -c conda-forge openjdk=11.0.8 nextflow python
 conda activate nextflow
 ```
@@ -56,14 +57,13 @@ Note: make sure docker has at least 60GB available disk space, 6CPUS, 16GB memor
 
 
 ```bash
-git clone https://github.com/nchis09/BonoboFlow.git
-cd BonoboFlow
+cd ../../
 nextflow run bonoboflow.nf --help
 ```
 
 ## Usage
 
-The pipeline takes in the fastq file from Nanopore sequencing technology 
+The pipeline takes in the fast5 file from Nanopore sequencing technology 
 
 ```bash
 conda activate nextflow
