@@ -2,15 +2,15 @@
 
 params.version = 1.0
 
-def helpMessage() {
+def pipelineLogo() {
     log.info"""
 
-Usage:
 ========================================================================================
                         B O N O B O F L O W     - P I P E L I N E
 ========================================================================================
 
-BonoboFlow PIPELINE for viral genome assembly pipeline from MinION sequenced reads
+The BonoboFlow pipeline is a dedicated tool developed for the precise execution of viral 
+       genome assembly and haplotypes construction from MinION sequencing reads
 
            ------------------------------------------------------------
  
@@ -22,9 +22,14 @@ BonoboFlow PIPELINE for viral genome assembly pipeline from MinION sequenced rea
 
                                         -
 
-=============================================
-BonoboFlow  ~  version ${params.version}
-=============================================
+                   =============================================
+                     BonoboFlow  ~  version ${params.version}
+                   =============================================
+""".stripIndent()
+}
+
+def helpMessage() {
+    log.info"""
 
 To run BonoboFlow, use the following command:
 
@@ -43,15 +48,18 @@ Mandatory arguments:
 -w                          Provide a directory to save the work files. The default is the location that has the BonoboFlow.nf file
 
 Other arguments:
---barcodes                  Barcodes used during sequencing. Default "EXP-NBD104 EXP-NBD114"
+--barcodes                  Barcodes used during sequencing. The default barcoding kits are "EXP-NBD104 EXP-NBD114"
 --cpu                       CPUs to be used during the analysis. The default is 8
 --memory                    Memory allocated for each process. The default is 30 GB
 --lowerlength               Set the lower length for input reads filter (default: 1000)
 --upperlength               Set the upper length for input reads filter (default: 10000)
---pipeline                  Specify whether you want to do genome assembly or generate haplotype. default “assembly“
+--pipeline                  Specify whether you want to do genome assembly or generate haplotype. The default is assembly
 --genomesize                Only required if you are running genome assembly (default: 5k)
 """.stripIndent()
 }
+
+pipelineLogo()
+
 
 // Show help emssage
 params.help = false
@@ -214,6 +222,7 @@ process runMapping {
 
 process runErrcorrect {
     tag {"error_correction"}
+    label 'small_mem'
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
@@ -245,10 +254,10 @@ process runErrcorrect {
         os.makedirs(output_subdir, exist_ok=True)
 
         # Run the error correction commands
-        command1 = f"rattle cluster -i {subdir_path}/{subdir}_mapped_reads.fastq -p 0.2 -t 8 --iso --repr-percentile 0.3 -o {output_subdir}"
+        command1 = f"${{baseDir}}/packages/RATTLE/rattle cluster -i {subdir_path}/{subdir}_mapped_reads.fastq -p 0.2 -t 8 --iso --repr-percentile 0.3 -o {output_subdir}"
         subprocess.run(command1, shell=True, check=True)
 
-        command2 = f"rattle correct -i {subdir_path}/{subdir}_mapped_reads.fastq -c {output_subdir}/clusters.out -t 8 -o {output_subdir}"
+        command2 = f"${{baseDir}}/packages/RATTLE/rattle correct -i {subdir_path}/{subdir}_mapped_reads.fastq -c {output_subdir}/clusters.out -t 8 -o {output_subdir}"
         subprocess.run(command2, shell=True, check=True)
 
         # Move the corrected file

@@ -10,9 +10,8 @@
 ## B O N O B O F L O W - P I P E L I N E
 
 
-        BonoboFlow PIPELINE for viral genome assemblypipeline from MinION 
-
-                                  sequenced reads
+The BonoboFlow pipeline is a dedicated tool developed for the precise execution of viral 
+        genome assembly and haplotypes construction from MinION sequencing reads
 
                 ------------------------------------------------------
 
@@ -25,14 +24,13 @@
                                           -
 
                       =============================================
-                         BonoboFlow  ~  version 1.0
+                              BonoboFlow  ~  version 1.0
                       ==============================================
 
 
 ## Introduction
 
-BonoboFlow is a nextflow pipeline for reproducible analysis of 
-
+BonoboFlow is a nextflow pipeline for reproducible and precise execution of viral genome assembly and haplotypes construction 
 
 
 ## Installation
