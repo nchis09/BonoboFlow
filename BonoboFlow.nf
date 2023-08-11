@@ -97,26 +97,35 @@ if (!sample_id_csv.exists()) {
 */
 
 process runPowerchop {
+
     tag "fastq"
     publishDir params.outfile, mode: "copy", overwrite: false
     label 'bonobo_img'
-            
+    
     input:
     path (in_fastq)
+    val (cpu)
     
     output:
-    path (input_files)
-    path (choped_seq), emit: choped
-
-
-    script: 
+    path choped_seq, emit: choped
+    
+    script:
     """
-    mkdir input_files choped_seq
-    cat ${in_fastq}/* > input_files/combined_input.fastq.gz
-    porechop -i input_files/combined_input.fastq.gz -t 14 -v 2 \
-    --extra_end_trim 0 --end_size 40 -o choped_seq/porechoped.fastq 
+    #!/usr/bin/env bash
+    
+    # Create the output directory
+    mkdir -p choped_seq
+    
+    # Loop through input files and run porechop
+    for file in \$(ls $in_fastq); do
+        sample_id=\$(basename "\$file")
+        
+        # Run the porechop command
+        porechop -i "$in_fastq/\$file" --threads "$cpu" -v 2 --extra_end_trim 0 --end_size 40 -o "choped_seq/\$sample_id"
+    done
     """
 }
+
 
 /*
 * Run Barcoding
@@ -364,7 +373,7 @@ process runHaplotype {
         subprocess.run(command1, shell=True, check=True)
 
         # Run the strainline command
-        command2 = f"/app/Strainline/src/strainline.sh -i {output_subdir}/{subdir}_corrected.fasta -o {output_subdir} -p ont --maxLD 0.01 --rmMisassembly True"
+        command2 = f"/app/Strainline/src/strainline.sh -i {output_subdir}/{subdir}_corrected.fasta -o {output_subdir} -p ont --maxLD 0.01 --rmMisassembly True --threads ${params.cpu}"
         subprocess.run(command2, shell=True, check=True)
         
         # Move the haplotype file
@@ -628,7 +637,7 @@ process runSeqrenaming {
 
 
 workflow {
-   runPowerchop(params.in_fastq)
+   runPowerchop(params.in_fastq, params.cpu)
    runBarcoding(runPowerchop.out.choped, params.barcods, params.cpu)
    runMapping(runBarcoding.out.demultiplexed, params.ref_genome, params.lowerlength, params.upperlength)
    runErrcorrect( runMapping.out.mapped)
