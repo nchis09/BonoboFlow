@@ -231,7 +231,6 @@ process runMapping {
 
 process runErrcorrect {
     tag {"error_correction"}
-    label 'small_mem'
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
@@ -263,10 +262,10 @@ process runErrcorrect {
         os.makedirs(output_subdir, exist_ok=True)
 
         # Run the error correction commands
-        command1 = f"${{baseDir}}/packages/RATTLE/rattle cluster -i {subdir_path}/{subdir}_mapped_reads.fastq -p 0.2 -t 8 --iso --repr-percentile 0.3 -o {output_subdir}"
+        command1 = f"rattle cluster -i {subdir_path}/{subdir}_mapped_reads.fastq -p 0.2 -t 8 --iso --repr-percentile 0.3 -o {output_subdir}"
         subprocess.run(command1, shell=True, check=True)
 
-        command2 = f"${{baseDir}}/packages/RATTLE/rattle correct -i {subdir_path}/{subdir}_mapped_reads.fastq -c {output_subdir}/clusters.out -t 8 -o {output_subdir}"
+        command2 = f"rattle correct -i {subdir_path}/{subdir}_mapped_reads.fastq -c {output_subdir}/clusters.out -t 8 -o {output_subdir}"
         subprocess.run(command2, shell=True, check=True)
 
         # Move the corrected file
