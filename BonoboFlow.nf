@@ -78,18 +78,68 @@ if (!genome.exists()) {
     error "Error: Reference genome is not specified or you have provided an incorrect path"
 }
 
-fastq = "${params.in_fastq}" 
-File input_seq = new File(fastq)
-
-if (!input_seq.exists()) {
-    error "Error: Input fastq path is not specified or you have provided an incorrect path"
-}
-
 sample_ids = "${params.sample_id}" 
 File sample_id_csv = new File(sample_ids)
 
 if (!sample_id_csv.exists()) {
     error "Error: Input sample ID path is not specified or you have provided an incorrect path"
+}
+
+
+def rawFile = "${params.raw_file}"
+def inFastq = "${params.in_fastq}"
+
+if ((rawFile && inFastq) || (!rawFile && !inFastq)) {
+    error "Error: Only one of 'raw_file' or 'in_fastq' should be specified, not both"
+}
+
+if (rawFile) {
+    def rawFileObj = new File(rawFile)
+    if (!rawFileObj.exists()) {
+        error "Error: Input raw file path is not specified or you have provided an incorrect path"
+    }
+} else {
+    def inFastqObj = new File(inFastq)
+    if (!inFastqObj.exists()) {
+        error "Error: Input FASTQ file path is not specified or you have provided an incorrect path"
+    }
+}
+
+
+
+/*
+* Run dorado
+*/
+
+process runDorado {
+
+    tag "raw_file"
+    publishDir params.outfile, mode: "copy", overwrite: false
+    
+    input:
+    path (raw_file)
+    val (cpu)
+    val (basecallers)
+    val (model)
+    
+    output:
+    path basecalled, emit: in_fastq
+    
+    script:
+    """
+    #!/usr/bin/env bash
+    
+    # Create the output directory
+    mkdir -p basecalled
+    
+    # Loop through input files and run dorado
+    for file in \$(ls $raw_file); do
+        sample_id=\$(basename "\$file")
+        
+        # Run the dorado command
+        dorado "$basecallers" --emit-fastq "$model" "$raw_file" > "basecalled/\$sample_id"
+    done
+    """
 }
 
 /*
@@ -262,10 +312,10 @@ process runErrcorrect {
         os.makedirs(output_subdir, exist_ok=True)
 
         # Run the error correction commands
-        command1 = f"rattle cluster -i {subdir_path}/{subdir}_mapped_reads.fastq -p 0.2 -t 8 --iso --repr-percentile 0.3 -o {output_subdir}"
+        command1 = f"${{baseDir}}/../packages/RATTLE/rattle cluster -i {subdir_path}/{subdir}_mapped_reads.fastq -p 0.2 -t 8 --iso --repr-percentile 0.3 -o {output_subdir}"
         subprocess.run(command1, shell=True, check=True)
 
-        command2 = f"rattle correct -i {subdir_path}/{subdir}_mapped_reads.fastq -c {output_subdir}/clusters.out -t 8 -o {output_subdir}"
+        command2 = f"${{baseDir}}/../packages/RATTLE/rattle correct -i {subdir_path}/{subdir}_mapped_reads.fastq -c {output_subdir}/clusters.out -t 8 -o {output_subdir}"
         subprocess.run(command2, shell=True, check=True)
 
         # Move the corrected file
@@ -636,17 +686,24 @@ process runSeqrenaming {
 
 
 workflow {
-   runPowerchop(params.in_fastq, params.cpu)
+    if (params.basecalling == 'OFF') {
+        runPowerchop(params.in_fastq, params.cpu)
+    }
+    else if (params.basecalling == 'ON') {
+        runDorado(params.raw_file, params.cpu, params.basecallers, params.model)
+        runPowerchop(runDorado.out.in_fastq, params.cpu)
+        }
+
    runBarcoding(runPowerchop.out.choped, params.barcods, params.cpu)
    runMapping(runBarcoding.out.demultiplexed, params.ref_genome, params.lowerlength, params.upperlength)
-   runErrcorrect( runMapping.out.mapped)
+   runErrcorrect(runMapping.out.mapped)
 
-      if (params.pipeline == 'assembly') {
+    if (params.pipeline == 'assembly') {
        runAssembly(runErrcorrect.out.corrected, params.genomesize)
        runPolish_medaka(runAssembly.out.draftgenome, runMapping.out.mapped)
    }
 
-     else if (params.pipeline == 'haplotype') {
+    else if (params.pipeline == 'haplotype') {
        runHaplotype(runErrcorrect.out.corrected)
        runPolish_medaka(runHaplotype.out.draftgenome, runMapping.out.mapped)
    }

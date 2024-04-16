@@ -45,10 +45,10 @@ We recommend to install the packages as follow
 
 ```bash
 git clone https://github.com/nchis09/BonoboFlow.git
+conda create -n nextflow -c bioconda -c conda-forge openjdk=11.0.8 nextflow python cmake spoa
+conda activate nextflow
 cd BonoboFlow/packages/RATTLE
 ./build.sh
-conda create -n nextflow -c bioconda -c conda-forge openjdk=11.0.8 nextflow python
-conda activate nextflow
 ```
 
 Note: make sure docker has at least 60GB available disk space, 6CPUS, 16GB memory
@@ -56,7 +56,7 @@ Note: make sure docker has at least 60GB available disk space, 6CPUS, 16GB memor
 
 ```bash
 cd ../../
-nextflow run bonoboflow.nf --help
+nextflow run BonoboFlow.nf --help
 ```
 
 ## Usage
@@ -66,7 +66,7 @@ The pipeline takes in the fast5 file from Nanopore sequencing technology
 ```bash
 conda activate nextflow
 
-nextflow run BonoboFlow.nf -resume --in_fastq <in put directory> --outfile <output directory> --ref_genome <reference genone.fasta> --lowerlength 1000 --upperlength 5000 -w <work directory> --sample_id <sample_id.csv> --kit <sequencing kit>  --flowcell <flow cell used during sequencing> 
+nextflow run BonoboFlow.nf -resume --ref_genome <directory to reference genome> --in_fastq <directory to input files> --outfile <directory to output files> --sample_id <csv of sample IDs and barcode ID> -w <directory to save the work files>
 
     
 
@@ -88,6 +88,11 @@ nextflow run BonoboFlow.nf -resume --in_fastq <in put directory> --outfile <outp
       --upperlength               Set the upper length for input reads filter (default: 10000)
       --pipeline                  Specify whether you want to do genome assembly or generate haplotype. The default is assembly
       --genomesize                Only required if you are running genome assembly (default: 5k)
+      --basecallers               you should specify the basecalling tool you want to use with ddorado the default if basecaller and the alternative is duplex
+      --model                     Please specify the spped to run basecalling, the default is sup, the alternatives are fast, hac, for more information vist dorado github
+      --basecalling               Please specify whether you would like to carry out basecalling ON or OFF the default is OFF. If the basecalling is ON make sure you provide the raw fast5 or POD5 file
+
+
 
 ```
 
