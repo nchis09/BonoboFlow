@@ -33,7 +33,11 @@ def helpMessage() {
 
 To run BonoboFlow, use the following command:
 
-nextflow run BonoboFlow.nf -resume --ref_genome <directory to reference genome> \
+ \
+conda activate nextflow
+
+nextflow run BonoboFlow.nf -resume \
+--ref_genome <directory to reference genome> \
 --in_fastq <directory to input files> \
 --outfile <directory to output files> \
 --sample_id <csv of sample IDs and barcode ID> \
@@ -41,20 +45,26 @@ nextflow run BonoboFlow.nf -resume --ref_genome <directory to reference genome> 
 
 
 Mandatory arguments:
---in_fastq                  Path to the input fastq directory 
---outfile                   Path to the output directory
---ref_genome                Reference sequence
---sample_id                 Provide a sample CSV file that has barcode names and sample IDs
--w                          Provide a directory to save the work files. The default is the location that has the BonoboFlow.nf file
+      --in_fastq                  Path to input fastq dirctory 
+      --outfile                   Path to output directory
+      --ref_genome                reference sequence
+      --sample_id                 a csv file containing barcode_Ids and sample Ids
 
 Other arguments:
---barcodes                  Barcodes used during sequencing. The default barcoding kits are "EXP-NBD104 EXP-NBD114"
---cpu                       CPUs to be used during the analysis. The default is 8
---memory                    Memory allocated for each process. The default is 30 GB
---lowerlength               Set the lower length for input reads filter (default: 1000)
---upperlength               Set the upper length for input reads filter (default: 10000)
---pipeline                  Specify whether you want to do genome assembly or generate haplotype. The default is assembly
---genomesize                Only required if you are running genome assembly (default: 5k)
+      --barcods                   barcods used during sequencing. The default 
+                                  barcoding kits are "EXP-NBD104 EXP-NBD114"
+      --cpu                       cpus to used during the analyis. default is 8
+      --lowerlength               set the lower length for input reads filter (default: 1000)
+      --upperlength               set the upper length for input reads filter (default: 20000)
+      --cpu                       CPUs to be used during the analysis. The default is 8
+      --memory                    Memory allocated for each process. The default is 30 GB
+      --lowerlength               Set the lower length for input reads filter (default: 1000)
+      --upperlength               Set the upper length for input reads filter (default: 10000)
+      --pipeline                  Specify whether you want to do genome assembly or generate haplotype. The default is assembly
+      --genomesize                Only required if you are running genome assembly (default: 5k)
+      --basecallers               you should specify the basecalling tool you want to use with ddorado the default if basecaller and the alternative is duplex
+      --model                     Please specify the spped to run basecalling, the default is sup, the alternatives are fast, hac, for more information vist dorado github
+      --basecalling               Please specify whether you would like to carry out basecalling ON or OFF the default is OFF. If the basecalling is ON make sure you provide the raw fast5 or POD5 file
 """.stripIndent()
 }
 
@@ -281,6 +291,7 @@ process runMapping {
 
 process runErrcorrect {
     tag {"error_correction"}
+    label 'small_mem'
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
@@ -312,10 +323,10 @@ process runErrcorrect {
         os.makedirs(output_subdir, exist_ok=True)
 
         # Run the error correction commands
-        command1 = f"${{baseDir}}/../packages/RATTLE/rattle cluster -i {subdir_path}/{subdir}_mapped_reads.fastq -p 0.2 -t 8 --iso --repr-percentile 0.3 -o {output_subdir}"
+        command1 = f"${baseDir}/packages/RATTLE/rattle cluster -i {subdir_path}/{subdir}_mapped_reads.fastq -p 0.2 -t 8 --iso --repr-percentile 0.3 -o {output_subdir}"
         subprocess.run(command1, shell=True, check=True)
 
-        command2 = f"${{baseDir}}/../packages/RATTLE/rattle correct -i {subdir_path}/{subdir}_mapped_reads.fastq -c {output_subdir}/clusters.out -t 8 -o {output_subdir}"
+        command2 = f"${baseDir}/packages/RATTLE/rattle correct -i {subdir_path}/{subdir}_mapped_reads.fastq -c {output_subdir}/clusters.out -t 8 -o {output_subdir}"
         subprocess.run(command2, shell=True, check=True)
 
         # Move the corrected file
