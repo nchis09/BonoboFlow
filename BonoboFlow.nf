@@ -133,7 +133,7 @@ process runDorado {
     val (model)
     
     output:
-    path basecalled, emit: in_fastq
+    path basecalled/fastq_pass, emit: in_fastq
     
     script:
     """
