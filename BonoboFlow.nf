@@ -131,7 +131,7 @@ process runDorado {
     
     output:
     path(basecalled)                
-    path("basecalled/fastq_pass"), emit: in_fastq
+    path("basecalled"), emit: in_fastq
  
     script:
     """
@@ -140,12 +140,8 @@ process runDorado {
     # Create the output directory
     mkdir -p basecalled
     
-    # Loop through input files and run dorado
-    for file in \$(ls $raw_file); do
-        sample_id=\$(basename "\$file")
-        
-        # Run the dorado command
-        dorado "$basecallers" --emit-fastq "$model" "$raw_file" > "basecalled/\$sample_id"
+    # Run the dorado command
+        dorado "$basecallers" --emit-fastq "$model" "$raw_file" > "basecalled/basecalled.fastq"
     done
     """
 }
@@ -238,7 +234,7 @@ process runMapping {
     import subprocess
 
     demultiplexed_dir = "${demultiplexed}"
-    ref_genome = "${ref_genome}"  # Use the provided reference genome value
+    ref_genome = "${ref_genome}"  
     lowerlength = "${lowerlength}"
     upperlength = "${upperlength}"
 
@@ -262,7 +258,7 @@ process runMapping {
         output_subdir = os.path.join(output_dir, dir)
         os.makedirs(output_subdir, exist_ok=True)
 
-        # Run the mapping command
+        # Run the mapping 
         command = f"cat {dir_path}/*.fastq | \
                     minimap2 -a {ref_genome_dest} /dev/stdin | \
                     samtools view -b | \
@@ -320,7 +316,7 @@ process runErrcorrect {
         output_subdir = os.path.join(output_dir, subdir)
         os.makedirs(output_subdir, exist_ok=True)
 
-        # Run the error correction commands
+        # Run the error correction 
         command1 = f"${baseDir}/packages/RATTLE/rattle cluster -i {subdir_path}/{subdir}_mapped_reads.fastq -p 0.2 -t 8 --iso --repr-percentile 0.3 -o {output_subdir}"
         subprocess.run(command1, shell=True, check=True)
 
@@ -375,7 +371,7 @@ process runAssembly {
         output_subdir = os.path.join(output_dir, subdir)
         os.makedirs(output_subdir, exist_ok=True)
 
-        # Run the assembly command
+        # Run the assembly 
         command1 = f"flye --meta --genome-size {genomesize} --nano-raw {subdir_path}/{subdir}_corrected.fastq --no-alt-contigs --out-dir {output_subdir}"
         subprocess.run(command1, shell=True, check=True)
         
@@ -426,11 +422,11 @@ process runHaplotype {
         output_subdir = os.path.join(output_dir, subdir)
         os.makedirs(output_subdir, exist_ok=True)
 
-        # Run the seqtk command
+        # Run the seqtk 
         command1 = f"seqtk seq -A {subdir_path}/{subdir}_corrected.fastq > {output_subdir}/{subdir}_corrected.fasta"
         subprocess.run(command1, shell=True, check=True)
 
-        # Run the strainline command
+        # Run the strainline 
         command2 = f"/app/Strainline/src/strainline.sh -i {output_subdir}/{subdir}_corrected.fasta -o {output_subdir} -p ont --maxLD 0.01 --rmMisassembly True --threads ${params.cpu}"
         subprocess.run(command2, shell=True, check=True)
         
@@ -493,7 +489,7 @@ process runPolish_medaka {
         print("Assembled contigs file size:", os.path.getsize(os.path.join(subdir_path, f"{subdir}_contigs.fasta")))
         print("Mapped reads file size:", os.path.getsize(mapped_file))
 
-        # Run the medaka command
+        # Run the medaka 
         command1 = f"medaka_consensus -i {mapped_file} \
                          -d {subdir_path}/{subdir}_contigs.fasta \
                          -o {output_subdir} \
@@ -558,7 +554,7 @@ process runPolish_pilon {
         print("Assembled contigs file size:", os.path.getsize(os.path.join(subdir_path, f"{subdir}_polish_medaka.fasta")))
         print("Mapped reads file size:", os.path.getsize(mapped_file))
 
-        # Run the pilon command
+        # Run the pilon 
         command1 = f"bwa index {subdir_path}/{subdir}_polish_medaka.fasta && \
                      bwa mem -t7 {subdir_path}/{subdir}_polish_medaka.fasta {mapped_file} | \
                      samtools sort -@ 7 | \
@@ -615,7 +611,7 @@ process runProovframe {
         output_subdir = os.path.join(output_dir, subdir)
         os.makedirs(output_subdir, exist_ok=True)
 
-        # Run the proovframe commands
+        # Run the proovframe 
         command1 = f"proovframe map -a /app/db/viral_aa/viral_aa_ref_Seq.fasta \
                     -o {output_subdir}/{subdir}.tsv \
                     {subdir_path}/{subdir}_polishing.fasta && \
@@ -666,7 +662,7 @@ process runSeqrenaming {
             new_file_path = os.path.join(os.getcwd(), "final_reports", fasta_file)
             shutil.copy(fasta_file_path, new_file_path)
 
-    # Read the CSV file and create the mapping
+    # Read the CSV file
     mapping = {}
     with open("${sample_id}", "r") as csv_file:
         csv_reader = csv.reader(csv_file)

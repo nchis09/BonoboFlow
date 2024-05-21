@@ -52,9 +52,6 @@ cd BonoboFlow/packages/RATTLE && \
 cd ../../
 ```
 
-Note: make sure docker has at least 60GB available disk space, 6CPUS, 16GB memory
-
-
 ```bash
 
 nextflow run BonoboFlow.nf --help
