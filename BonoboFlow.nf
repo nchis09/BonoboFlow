@@ -41,7 +41,8 @@ nextflow run BonoboFlow.nf -resume \
 --in_fastq <directory to input files> \
 --outfile <directory to output files> \
 --sample_id <csv of sample IDs and barcode ID> \
--w <directory to save the work files>
+-- contam <contaminant file in FASTA formart>
+-w <directory to save the work files> 
 
 
 Mandatory arguments:
@@ -52,16 +53,37 @@ Mandatory arguments:
       --sample_id                 a csv file containing barcode_Ids and sample Ids. An example csv file is provided in the BonoboFlow directory
 
 Other arguments:
-      --barcods                   barcods used during sequencing. The default barcoding kits are "EXP-NBD104 EXP-NBD114"
-      --cpu                       cpus to used during the analyis. default is 8
+      --cpu                       cpus to used during the analyis. (default: 8)
+      --phred                     minimum sequence quality score (default: 12)
       --lowerlength               set the lower length for input reads filter (default: 1000)
       --upperlength               set the upper length for input reads filter (default: 20000)
-      --memory                    Memory allocated for each process. The default is 30 GB
-      --pipeline                  Specify whether you want to do genome assembly or haplotype reconstruction. The default is haplotype
+      --memory                    Memory allocated for each process. (default: 30 GB)
+      --pipeline                  Specify whether you want to do genome assembly or haplotype reconstruction. (default: haplotype)
       --genomesize                Only required if you are running genome assembly (default: 5k)
-      --basecalling               Please specify whether you would like to carry out basecalling ON or OFF the default is OFF. If the basecalling is ON make sure you provide the raw fast5 or POD5 file
-      --basecallers               you should specify the basecalling tool you want to use with ddorado the default if basecaller and the alternative is duplex
-      --model                     Please specify the spped to run basecalling, the default is sup, the alternatives are fast, hac, for more information vist dorado github
+      --basecalling               Please specify whether you would like to carry out basecalling (default: OFF). If "ON" ensure to provide raw files
+
+Basecalling arguments:
+      --basecallers               specify the basecalling tool (default: basecaller the alternative: duplex)
+      --model                     Please specify the spped to run basecalling, the (default: sup the alternatives: fast, hac)
+
+Barcoding arguments:
+      --barcods                   barcods used during sequencing. (default: "EXP-NBD104 EXP-NBD114")
+      --min_score_rear_barcode    minimum quality of of rear barcode (default: 75)
+      --min_score_front_barcode   minimum quality of a rear barcode (default: 75)
+
+Error_correction arguments:
+      --repr-percentile           cluster representative percentile (default: 0.15)
+      --score-threshold           minimum score for two reads to be in the same gene cluster (default: 0.2)
+      --kmer-size                 k-mer size for isoform clustering (default: 11, maximum: 16)
+      
+Haplotype arguments:
+      --maxLD-floats              Maximum local divergence allowed for merging haplotypes. (default: 0.01)
+      --maxGD-floats              Maximum global divergence allowed for merging haplotypes. (default: 0.01)
+      --rmMisassembly-bool        Break contigs at potential misassembled positions (default: False)
+      --correctErr-bool           Perform error correction for input reads (default: False)
+      --minAbun-floats            Minimum abundance for filtering haplotypes (default: 0.02)
+
+
 """.stripIndent()
 }
 
@@ -181,6 +203,43 @@ process runPowerchop {
 }
 
 
+
+process runChopper {
+
+    tag "fastq"
+    publishDir params.outfile, mode: "copy", overwrite: false
+    label 'bonobo_img'
+    
+    input:
+    path (in_fastq)
+    val (cpu)
+    val (upperlength)
+    val (phred)
+    val (lowerlength)
+    val (contam)
+   
+    
+    output:
+    path choped_seq, emit: choped
+    
+    script:
+    """
+    #!/usr/bin/env bash
+    
+    # Create the output directory
+    mkdir -p choped_seq
+    
+    # Loop through input files and run porechop
+    for file in \$(ls $in_fastq); do
+        sample_id=\$(basename "\$file")
+        
+        # Run the porechop command
+        chopper -q "$phred" -l "$lowerlength" --maxlength "$upperlength" --threads "$cpu" -c "$contam" -i "$in_fastq/\$file" > "choped_seq/\$sample_id"
+    done
+    """
+}
+
+
 /*
 * Run Barcoding
 */
@@ -192,6 +251,8 @@ process runBarcoding {
     path (choped) 
     val (barcods)
     val (cpu)
+    val (min_score_rear_barcode)
+    val (min_score_front_barcode)
     
     output:
     path(demultiplexed_dir), emit: demultiplexed
@@ -201,7 +262,7 @@ process runBarcoding {
     """
     mkdir demultiplexed_dir
     guppy_barcoder -i "${choped}" -s demultiplexed_dir \
-    --barcode_kits "${barcods}" -t "${cpu}" --fastq_out --min_score_rear_override 75 --min_score 75 --trim_barcodes
+    --barcode_kits "${barcods}" -t "${cpu}" --fastq_out --min_score_rear_override "${min_score_rear_barcode}" --min_score "${min_score_front_barcode}" --trim_barcodes
     find demultiplexed_dir -maxdepth 1 -type d -exec du -s {} \\; | awk '\$1 < 1000 {print \$2}' | \
     xargs -I {} sh -c 'rm -rf {} && echo {} deleted' > demultiplexed_dir/deleted_directories.txt
     """
@@ -217,10 +278,11 @@ process runMapping {
     publishDir path: "${params.outfile}", mode: "copy", overwrite: false
 
     input:
-    path(demultiplexed)
-    file(ref_genome)
-    val(lowerlength)
-    val(upperlength)
+    path (demultiplexed)
+    path (ref_genome)
+    val (lowerlength)
+    val (upperlength)
+    val (cpu)
 
     output:
     path("mapped_reads"), emit: mapped
@@ -234,7 +296,7 @@ process runMapping {
     import subprocess
 
     demultiplexed_dir = "${demultiplexed}"
-    ref_genome = "${ref_genome}"  
+    ref_gen = "${ref_genome}"  
     lowerlength = "${lowerlength}"
     upperlength = "${upperlength}"
 
@@ -242,8 +304,8 @@ process runMapping {
     os.makedirs(output_dir, exist_ok=True)
 
     # Copy the reference genome to the demultiplexed folder
-    ref_genome_dest = os.path.join(demultiplexed_dir, os.path.basename(ref_genome))
-    shutil.copyfile(ref_genome, ref_genome_dest)
+    ref_genome_dest = os.path.join(demultiplexed_dir, os.path.basename(ref_gen))
+    shutil.copyfile(ref_gen, ref_genome_dest)
 
     for dir in os.listdir(demultiplexed_dir):
         if not dir.startswith("bar"):
@@ -259,10 +321,7 @@ process runMapping {
         os.makedirs(output_subdir, exist_ok=True)
 
         # Run the mapping 
-        command = f"cat {dir_path}/*.fastq | \
-                    minimap2 -a {ref_genome_dest} /dev/stdin | \
-                    samtools view -b | \
-                    samtools sort > {output_subdir}/{barcode_id}_align_sorted.bam"
+        command = f"bwa index {ref_genome_dest} && cat {dir_path}/*.fastq | bwa mem -t ${cpu} {ref_genome_dest} /dev/stdin | samtools sort -@ ${cpu} | samtools view -F 4 -o {output_subdir}/{barcode_id}_align_sorted.bam"
         subprocess.run(command, shell=True, check=True)
 
         # Convert the BAM file to FASTQ
@@ -289,7 +348,11 @@ process runErrcorrect {
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
-    path(mapped)
+    path (mapped)
+    val (cpu)
+    val (repr_percentile)
+    val (score_threshold)
+    val (kmer_size)
 
     output:
     path("error_correction"), emit: corrected
@@ -317,10 +380,10 @@ process runErrcorrect {
         os.makedirs(output_subdir, exist_ok=True)
 
         # Run the error correction 
-        command1 = f"${baseDir}/packages/RATTLE/rattle cluster -i {subdir_path}/{subdir}_mapped_reads.fastq -p 0.2 -t 8 --iso --repr-percentile 0.3 -o {output_subdir}"
+        command1 = f"${baseDir}/packages/RATTLE/rattle cluster -i {subdir_path}/{subdir}_mapped_reads.fastq -p ${repr_percentile} -s ${score_threshold} -t ${cpu} --iso-kmer-size ${kmer_size} -o {output_subdir}"
         subprocess.run(command1, shell=True, check=True)
 
-        command2 = f"${baseDir}/packages/RATTLE/rattle correct -i {subdir_path}/{subdir}_mapped_reads.fastq -c {output_subdir}/clusters.out -t 8 -o {output_subdir}"
+        command2 = f"${baseDir}/packages/RATTLE/rattle correct -i {subdir_path}/{subdir}_mapped_reads.fastq -c {output_subdir}/clusters.out -t ${cpu} -o {output_subdir}"
         subprocess.run(command2, shell=True, check=True)
 
         # Move the corrected file
@@ -341,8 +404,8 @@ process runAssembly {
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
-    path(corrected)
-    val(genomesize)
+    path (corrected)
+    val (genomesize)
     
     output:
     path("assembly"), emit: draftgenome
@@ -372,7 +435,7 @@ process runAssembly {
         os.makedirs(output_subdir, exist_ok=True)
 
         # Run the assembly 
-        command1 = f"flye --meta --genome-size {genomesize} --nano-raw {subdir_path}/{subdir}_corrected.fastq --no-alt-contigs --out-dir {output_subdir}"
+        command1 = f"flye --meta --genome-size ${genomesize} --nano-raw {subdir_path}/{subdir}_corrected.fastq --no-alt-contigs --out-dir {output_subdir}"
         subprocess.run(command1, shell=True, check=True)
         
         # Move the assembly file
@@ -394,7 +457,13 @@ process runHaplotype {
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
-    path(corrected)
+    path (corrected)
+    val (cpu)
+    val (maxLD_floats)
+    val (rmMisassembly_bool)
+    val (correctErr_bool)
+    val (minAbun_floats)
+    val (maxGD_floats)
     
     output:
     path("haplotype"), emit: draftgenome
@@ -423,11 +492,11 @@ process runHaplotype {
         os.makedirs(output_subdir, exist_ok=True)
 
         # Run the seqtk 
-        command1 = f"seqtk seq -A {subdir_path}/{subdir}_corrected.fastq > {output_subdir}/{subdir}_corrected.fasta"
+        command1 = f"seqtk seq -A {subdir_path}/{subdir}_corrected.fastq > {output_subdir}/corrected.0.fa"
         subprocess.run(command1, shell=True, check=True)
 
         # Run the strainline 
-        command2 = f"/app/Strainline/src/strainline.sh -i {output_subdir}/{subdir}_corrected.fasta -o {output_subdir} -p ont --maxLD 0.01 --rmMisassembly True --threads ${params.cpu}"
+        command2 = f"/app/Strainline/src/strainline.sh -i {output_subdir}/corrected.0.fa -o {output_subdir} -p ont --maxLD ${maxLD_floats} --maxGD ${maxGD_floats} --rmMisassembly ${rmMisassembly_bool} --correctErr ${correctErr_bool} --minAbun ${minAbun_floats} --threads ${cpu}"
         subprocess.run(command2, shell=True, check=True)
         
         # Move the haplotype file
@@ -448,8 +517,9 @@ process runPolish_medaka {
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
-    path(draftgenome)
-    path(mapped)
+    path (draftgenome)
+    path (mapped)
+    val (cpu)
     
     output:
     path("medaka"), emit: medaka
@@ -493,7 +563,7 @@ process runPolish_medaka {
         command1 = f"medaka_consensus -i {mapped_file} \
                          -d {subdir_path}/{subdir}_contigs.fasta \
                          -o {output_subdir} \
-                         -t 8"
+                         -t ${cpu}"
         subprocess.run(command1, shell=True, check=True)
         
         # Move the medaka file
@@ -513,8 +583,10 @@ process runPolish_pilon {
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
-    path(medaka)
-    path(mapped)
+    path (medaka)
+    path (mapped)
+    val (cpu)
+    val (min_mq)
     
     output:
     path("pilon"), emit: pilon
@@ -556,12 +628,12 @@ process runPolish_pilon {
 
         # Run the pilon 
         command1 = f"bwa index {subdir_path}/{subdir}_polish_medaka.fasta && \
-                     bwa mem -t7 {subdir_path}/{subdir}_polish_medaka.fasta {mapped_file} | \
-                     samtools sort -@ 7 | \
+                     bwa mem -t ${cpu} {subdir_path}/{subdir}_polish_medaka.fasta {mapped_file} | \
+                     samtools sort -@ ${cpu} | \
                      samtools markdup /dev/stdin {output_subdir}/{subdir}_cons_ali_filter.bam && \
-                     samtools view -b -@ 7 -q 30 {output_subdir}/{subdir}_cons_ali_filter.bam \
+                     samtools view -b -@ ${cpu} -q ${min_mq} {output_subdir}/{subdir}_cons_ali_filter.bam \
                                           -o {output_subdir}/{subdir}_cons_ali_dup_filter.bam && \
-                     samtools index -@ 7 {output_subdir}/{subdir}_cons_ali_dup_filter.bam && \
+                     samtools index -@ ${cpu} {output_subdir}/{subdir}_cons_ali_dup_filter.bam && \
                      pilon -Xmx4096m -XX:-UseGCOverheadLimit \
                            --genome {subdir_path}/{subdir}_polish_medaka.fasta \
                            --unpaired {output_subdir}/{subdir}_cons_ali_dup_filter.bam \
@@ -692,28 +764,28 @@ process runSeqrenaming {
 
 workflow {
     if (params.basecalling == 'OFF') {
-        runPowerchop(params.in_fastq, params.cpu)
+        runChopper(params.in_fastq, params.cpu, params.upperlength, params.phred, params.lowerlength, params.contam)
     }
     else if (params.basecalling == 'ON') {
         runDorado(params.raw_file, params.cpu, params.basecallers, params.model)
-        runPowerchop(runDorado.out.in_fastq, params.cpu)
+        runChopper(runDorado.out.in_fastq, params.cpu, params.upperlength, params.phred, params.lowerlength, params.contam)
         }
 
-   runBarcoding(runPowerchop.out.choped, params.barcods, params.cpu)
-   runMapping(runBarcoding.out.demultiplexed, params.ref_genome, params.lowerlength, params.upperlength)
-   runErrcorrect(runMapping.out.mapped)
+   runBarcoding(runChopper.out.choped, params.barcods, params.cpu, params.min_score_rear_barcode, params.min_score_front_barcode)
+   runMapping(runBarcoding.out.demultiplexed, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
+   runErrcorrect(runMapping.out.mapped, params.cpu, params.repr_percentile, params.score_threshold, params.kmer_size)
 
     if (params.pipeline == 'assembly') {
        runAssembly(runErrcorrect.out.corrected, params.genomesize)
-       runPolish_medaka(runAssembly.out.draftgenome, runMapping.out.mapped)
+       runPolish_medaka(runAssembly.out.draftgenome, runMapping.out.mapped, params.cpu)
    }
 
     else if (params.pipeline == 'haplotype') {
-       runHaplotype(runErrcorrect.out.corrected)
-       runPolish_medaka(runHaplotype.out.draftgenome, runMapping.out.mapped)
+       runHaplotype(runErrcorrect.out.corrected, params.cpu, params.maxLD_floats, params.rmMisassembly_bool, params.correctErr_bool, params.minAbun_floats, params.maxGD_floats)
+       runPolish_medaka(runHaplotype.out.draftgenome, runMapping.out.mapped, params.cpu)
    }
 
-   runPolish_pilon(runPolish_medaka.out.medaka, runMapping.out.mapped)
+   runPolish_pilon(runPolish_medaka.out.medaka, runMapping.out.mapped, params.min_mq, params.cpu)
    runProovframe(runPolish_pilon.out.pilon)
    runSeqrenaming(runProovframe.out.final_seq, params.sample_id)
 }

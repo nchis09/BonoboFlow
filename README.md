@@ -76,16 +76,41 @@ Mandatory arguments:
       --sample_id                 a csv file containing barcode_Ids and sample Ids. An example csv file is provided in the BonoboFlow directory
 
 Other arguments:
-      --barcods                   barcods used during sequencing. The default barcoding kits are "EXP-NBD104 EXP-NBD114"
-      --cpu                       cpus to used during the analyis. default is 8
+      --cpu                       cpus to used during the analyis. (default: 8)
+      --phred                     minimum sequence quality score (default: 12)
       --lowerlength               set the lower length for input reads filter (default: 1000)
       --upperlength               set the upper length for input reads filter (default: 20000)
-      --memory                    Memory allocated for each process. The default is 30 GB
-      --pipeline                  Specify whether you want to do genome assembly or haplotype reconstruction. The default is haplotype
+      --memory                    Memory allocated for each process. (default: 30 GB)
+      --pipeline                  Specify whether you want to do genome assembly or haplotype reconstruction. (default: haplotype)
       --genomesize                Only required if you are running genome assembly (default: 5k)
-      --basecalling               Please specify whether you would like to carry out basecalling ON or OFF the default is OFF. If the basecalling is ON make sure you provide the raw fast5 or POD5 file
-      --basecallers               you should specify the basecalling tool you want to use with ddorado the default if basecaller and the alternative is duplex
-      --model                     Please specify the spped to run basecalling, the default is sup, the alternatives are fast, hac, for more information vist dorado github
+      --basecalling               Please specify whether you would like to carry out basecalling (default: OFF). If "ON" ensure to provide raw files
+      --contam                    file containing the contaminant sequences that should be removed from the reads
+Basecalling arguments:
+      --basecallers               specify the basecalling tool (default: basecaller the alternative: duplex)
+      --model                     Please specify the spped to run basecalling, the (default: sup the alternatives: fast, hac)
+
+Barcoding arguments:
+      --barcods                   barcods used during sequencing. (default: "EXP-NBD104 EXP-NBD114")
+      --min_score_rear_barcode    minimum quality of of rear barcode (default: 75)
+      --min_score_front_barcode   minimum quality of a rear barcode (default: 75)
+
+mapping argements:
+      --min_mq                    have mapping quality (default: 30)
+
+Error_correction arguments:
+      --repr_percentile           cluster representative percentile (default: 0.15)
+      --score_threshold           minimum score for two reads to be in the same gene cluster (default: 0.2)
+      --kmer_size                 k-mer size for isoform clustering (default: 11, maximum: 16)
+
+Haplotype arguments:
+      --maxLD_floats              Maximum local divergence allowed for merging haplotypes. (default: 0.01)
+      --maxGD_floats              Maximum global divergence allowed for merging haplotypes. (default: 0.01)
+      --rmMisassembly_bool        Break contigs at potential misassembled positions (default: False)
+      --correctErr_bool           Perform error correction for input reads (default: False)
+      --minAbun_floats            Minimum abundance for filtering haplotypes (default: 0.02)
+
+   
+
 
 
 
