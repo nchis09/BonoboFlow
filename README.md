@@ -45,8 +45,8 @@ We recommend to install the packages as follow
 
 ```bash
 git clone https://github.com/nchis09/BonoboFlow.git && \
-conda create -n nextflow -c bioconda -c conda-forge openjdk=11.0.8 nextflow python cmake spoa && \
-conda activate nextflow && \
+conda create -n bonobo -c bioconda -c conda-forge openjdk=11.0.8 nextflow=24.04.2  python cmake spoa && \
+conda activate bonobo && \
 cd BonoboFlow/packages/RATTLE && \
 ./build.sh && \
 cd ../../
