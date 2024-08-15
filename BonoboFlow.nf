@@ -41,7 +41,6 @@ nextflow run BonoboFlow.nf -resume \
 --in_fastq <directory to input files> \
 --outfile <directory to output files> \
 --sample_id <csv of sample IDs and barcode ID> \
--- contam <contaminant file in FASTA formart>
 -w <directory to save the work files> 
 
 
@@ -61,6 +60,7 @@ Other arguments:
       --pipeline                  Specify whether you want to do genome assembly or haplotype reconstruction. (default: haplotype)
       --genomesize                Only required if you are running genome assembly (default: 5k)
       --basecalling               Please specify whether you would like to carry out basecalling (default: OFF). If "ON" ensure to provide raw files
+      --contam                    path to potential contaminant sequence file in FASTA formart
 
 Basecalling arguments:
       --basecallers               specify the basecalling tool (default: basecaller the alternative: duplex)
@@ -82,6 +82,10 @@ Haplotype arguments:
       --rmMisassembly-bool        Break contigs at potential misassembled positions (default: False)
       --correctErr-bool           Perform error correction for input reads (default: False)
       --minAbun-floats            Minimum abundance for filtering haplotypes (default: 0.02)
+      --topks                     k seed reads size for haplotype construction (default: 100)
+      --minovlplens               Minimum read overlap length. (default: 1000)
+      --minseedlens               Minimum seed read length. (default: 2000)
+      --maxohs                    Maximum overhang length allowed for overlaps. (default: 20)
 
 
 """.stripIndent()
@@ -202,7 +206,9 @@ process runPowerchop {
     """
 }
 
-
+/*
+* Run Chopper
+*/
 
 process runChopper {
 
@@ -464,7 +470,12 @@ process runHaplotype {
     val (correctErr_bool)
     val (minAbun_floats)
     val (maxGD_floats)
-    
+
+    val (topks)
+    val (minovlplens)
+    val (minseedlens)
+    val (maxohs)
+
     output:
     path("haplotype"), emit: draftgenome
    
@@ -496,7 +507,7 @@ process runHaplotype {
         subprocess.run(command1, shell=True, check=True)
 
         # Run the strainline 
-        command2 = f"/app/Strainline/src/strainline.sh -i {output_subdir}/corrected.0.fa -o {output_subdir} -p ont --maxLD ${maxLD_floats} --maxGD ${maxGD_floats} --rmMisassembly ${rmMisassembly_bool} --correctErr ${correctErr_bool} --minAbun ${minAbun_floats} --threads ${cpu}"
+        command2 = f"/app/Strainline/src/strainline.sh -i {output_subdir}/corrected.0.fa -o {output_subdir} -p ont --maxLD ${maxLD_floats} --maxGD ${maxGD_floats} --rmMisassembly ${rmMisassembly_bool} --correctErr ${correctErr_bool} --minAbun ${minAbun_floats} -k ${topks} --minOvlpLen ${minovlplens} --minSeedLen ${minseedlens} --maxOH ${maxohs} --threads ${cpu}"
         subprocess.run(command2, shell=True, check=True)
         
         # Move the haplotype file
@@ -781,7 +792,7 @@ workflow {
    }
 
     else if (params.pipeline == 'haplotype') {
-       runHaplotype(runErrcorrect.out.corrected, params.cpu, params.maxLD_floats, params.rmMisassembly_bool, params.correctErr_bool, params.minAbun_floats, params.maxGD_floats)
+       runHaplotype(runErrcorrect.out.corrected, params.cpu, params.maxLD_floats, params.rmMisassembly_bool, params.correctErr_bool, params.minAbun_floats, params.maxGD_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs)
        runPolish_medaka(runHaplotype.out.draftgenome, runMapping.out.mapped, params.cpu)
    }
 

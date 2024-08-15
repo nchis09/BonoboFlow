@@ -45,7 +45,7 @@ We recommend to install the packages as follow
 
 ```bash
 git clone https://github.com/nchis09/BonoboFlow.git && \
-conda create -n bonobo -c bioconda -c conda-forge openjdk=11.0.8 nextflow=24.04.2  python cmake spoa && \
+conda create -n bonoboflow -c bioconda -c conda-forge openjdk=11.0.8 nextflow=24.04.2  python cmake spoa && \
 conda activate bonobo && \
 cd BonoboFlow/packages/RATTLE && \
 ./build.sh && \
@@ -53,7 +53,7 @@ cd ../../
 ```
 
 ```bash
-
+conda activate bonoboflow
 nextflow run BonoboFlow.nf --help
 ```
 
@@ -62,7 +62,7 @@ nextflow run BonoboFlow.nf --help
 The pipeline takes in the fast5 file from Nanopore sequencing technology 
 
 ```bash
-conda activate nextflow
+conda activate bonoboflow
 
 nextflow run BonoboFlow.nf -resume --ref_genome <directory to reference genome> --in_fastq <directory to input files> --outfile <directory to output files> --sample_id <csv of sample IDs and barcode ID> -w <directory to save the work files>
 
@@ -108,6 +108,10 @@ Haplotype arguments:
       --rmMisassembly_bool        Break contigs at potential misassembled positions (default: False)
       --correctErr_bool           Perform error correction for input reads (default: False)
       --minAbun_floats            Minimum abundance for filtering haplotypes (default: 0.02)
+      --topks                     k seed reads size for haplotype construction (default: 100)
+      --minovlplens               Minimum read overlap length. (default: 1000)
+      --minseedlens               Minimum seed read length. (default: 2000)
+      --maxohs                    Maximum overhang length allowed for overlaps. (default: 20)
 
    
 
