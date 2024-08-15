@@ -59,7 +59,7 @@ nextflow run BonoboFlow.nf --help
 
 ## Usage
 
-The pipeline takes in the fast5 file from Nanopore sequencing technology 
+The pipeline takes in the FAST5/POD5 or FASTQ file from Nanopore sequencing technology 
 
 ```bash
 conda activate bonoboflow
@@ -165,7 +165,6 @@ Kindly report any issues at https://github.com/nchis09/BonoboFlow/issues
 
 ## License
 
-BonoboFlow is licensed under GNU GPL v3.
 
 ## Citation
 

@@ -221,8 +221,6 @@ process runChopper {
     val (upperlength)
     val (phred)
     val (lowerlength)
-    val (contam)
-   
     
     output:
     path choped_seq, emit: choped
