@@ -60,7 +60,6 @@ Other arguments:
       --pipeline                  Specify whether you want to do genome assembly or haplotype reconstruction. (default: haplotype)
       --genomesize                Only required if you are running genome assembly (default: 5k)
       --basecalling               Please specify whether you would like to carry out basecalling (default: OFF). If "ON" ensure to provide raw files
-      --contam                    path to potential contaminant sequence file in FASTA formart
 
 Basecalling arguments:
       --basecallers               specify the basecalling tool (default: basecaller the alternative: duplex)
@@ -240,7 +239,7 @@ process runChopper {
         sample_id=\$(basename "\$file")
         
         # Run the porechop command
-        chopper -q "$phred" -l "$lowerlength" --maxlength "$upperlength" --threads "$cpu" -c "$contam" -i "$in_fastq/\$file" > "choped_seq/\$sample_id"
+        chopper -q "$phred" -l "$lowerlength" --maxlength "$upperlength" --threads "$cpu" -i "$in_fastq/\$file" > "choped_seq/\$sample_id"
     done
     """
 }
@@ -775,11 +774,11 @@ process runSeqrenaming {
 
 workflow {
     if (params.basecalling == 'OFF') {
-        runChopper(params.in_fastq, params.cpu, params.upperlength, params.phred, params.lowerlength, params.contam)
+        runChopper(params.in_fastq, params.cpu, params.upperlength, params.phred, params.lowerlength)
     }
     else if (params.basecalling == 'ON') {
         runDorado(params.raw_file, params.cpu, params.basecallers, params.model)
-        runChopper(runDorado.out.in_fastq, params.cpu, params.upperlength, params.phred, params.lowerlength, params.contam)
+        runChopper(runDorado.out.in_fastq, params.cpu, params.upperlength, params.phred, params.lowerlength)
         }
 
    runBarcoding(runChopper.out.choped, params.barcods, params.cpu, params.min_score_rear_barcode, params.min_score_front_barcode)

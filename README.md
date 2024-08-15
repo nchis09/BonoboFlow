@@ -46,7 +46,7 @@ We recommend to install the packages as follow
 ```bash
 git clone https://github.com/nchis09/BonoboFlow.git && \
 conda create -n bonoboflow -c bioconda -c conda-forge openjdk=11.0.8 nextflow=24.04.2  python cmake spoa && \
-conda activate bonobo && \
+conda activate bonoboflow && \
 cd BonoboFlow/packages/RATTLE && \
 ./build.sh && \
 cd ../../
@@ -84,7 +84,7 @@ Other arguments:
       --pipeline                  Specify whether you want to do genome assembly or haplotype reconstruction. (default: haplotype)
       --genomesize                Only required if you are running genome assembly (default: 5k)
       --basecalling               Please specify whether you would like to carry out basecalling (default: OFF). If "ON" ensure to provide raw files
-      --contam                    file containing the contaminant sequences that should be removed from the reads
+
 Basecalling arguments:
       --basecallers               specify the basecalling tool (default: basecaller the alternative: duplex)
       --model                     Please specify the spped to run basecalling, the (default: sup the alternatives: fast, hac)
@@ -112,10 +112,6 @@ Haplotype arguments:
       --minovlplens               Minimum read overlap length. (default: 1000)
       --minseedlens               Minimum seed read length. (default: 2000)
       --maxohs                    Maximum overhang length allowed for overlaps. (default: 20)
-
-   
-
-
 
 
 ```
