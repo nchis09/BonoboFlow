@@ -232,16 +232,15 @@ process runChopper {
     # Create the output directory
     mkdir -p choped_seq
     
-    # Loop through input files and run porechop
+    # Loop through input files and run Chopper
     for file in \$(ls $in_fastq); do
         sample_id=\$(basename "\$file")
         
-        # Run the porechop command
+        # Run the Chopper command
         chopper -q "$phred" -l "$lowerlength" --maxlength "$upperlength" --threads "$cpu" -i "$in_fastq/\$file" > "choped_seq/\$sample_id"
     done
     """
 }
-
 
 /*
 * Run Barcoding
@@ -342,10 +341,10 @@ process runMapping {
 
 
 /*
-* Run error_correction
+* Run error_correction_rattle
 */
 
-process runErrcorrect {
+process runErrcorrect_rattle {
     tag {"error_correction"}
     label 'small_mem'
     publishDir "${params.outfile}", mode: "copy", overwrite: false
@@ -396,6 +395,58 @@ process runErrcorrect {
         subprocess.run(command3, shell=True, check=True)
     """
 }
+
+
+/*
+* Run error_correction_vechat
+*/
+
+process runErrcorrectVechat {
+    tag "error_correction"
+    errorStrategy 'ignore'
+    publishDir "${params.outfile}", mode: "copy", overwrite: false
+
+    input:
+    path (mapped)
+    val (cpu)
+    val (split_size)
+    val (cudapoa_batches)
+    val (cudaaligner_batches)
+    val (phred)
+
+    output:
+    path("error_correction"), emit: corrected
+
+    script:
+    """
+    #!/usr/bin/env python
+
+    import os
+    import subprocess
+
+    mapped_dir = "${mapped}"
+    output_dir = os.path.join(os.path.dirname(mapped_dir), "error_correction")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Get the subdirectories in the mapped directory
+    subdirs = [d for d in os.listdir(mapped_dir) if os.path.isdir(os.path.join(mapped_dir, d)) and d.startswith("bar")]
+
+    for subdir in subdirs:
+        subdir_path = os.path.join(mapped_dir, subdir)
+        output_subdir = os.path.join(output_dir, subdir)
+        os.makedirs(output_subdir, exist_ok=True)
+
+        # Run the error correction
+        command1 = f"vechat {subdir_path}/{subdir}_mapped_reads.fastq -t ${cpu} --platform ont --split --split-size ${split_size} --scrub -c ${cudapoa_batches} --cudaaligner-batches ${cudaaligner_batches} -q ${phred} -o {output_subdir}"
+        subprocess.run(command1, shell=True, check=True)
+
+        # Move the corrected file
+        corrected_file = os.path.join(output_subdir, f"{subdir}_corrected.fasta")
+        if os.path.exists(os.path.join(output_subdir, "corrected.fasta")):
+            os.rename(os.path.join(output_subdir, "corrected.fasta"), corrected_file)
+    """
+}
+
 
 /*
 * Run genome_assembly
@@ -456,6 +507,7 @@ process runAssembly {
 
 process runHaplotype {
     tag {"genome_haplotype"}
+    errorStrategy 'ignore'
     label 'bonobo_img'
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
@@ -467,7 +519,6 @@ process runHaplotype {
     val (correctErr_bool)
     val (minAbun_floats)
     val (maxGD_floats)
-
     val (topks)
     val (minovlplens)
     val (minseedlens)
@@ -475,8 +526,8 @@ process runHaplotype {
 
     output:
     path("haplotype"), emit: draftgenome
-   
-    script: 
+
+    script:
     """
     #!/usr/bin/env python
 
@@ -499,19 +550,31 @@ process runHaplotype {
         output_subdir = os.path.join(output_dir, subdir)
         os.makedirs(output_subdir, exist_ok=True)
 
-        # Run the seqtk 
-        command1 = f"seqtk seq -A {subdir_path}/{subdir}_corrected.fastq > {output_subdir}/corrected.0.fa"
-        subprocess.run(command1, shell=True, check=True)
-
-        # Run the strainline 
-        command2 = f"/app/Strainline/src/strainline.sh -i {output_subdir}/corrected.0.fa -o {output_subdir} -p ont --maxLD ${maxLD_floats} --maxGD ${maxGD_floats} --rmMisassembly ${rmMisassembly_bool} --correctErr ${correctErr_bool} --minAbun ${minAbun_floats} -k ${topks} --minOvlpLen ${minovlplens} --minSeedLen ${minseedlens} --maxOH ${maxohs} --threads ${cpu}"
-        subprocess.run(command2, shell=True, check=True)
-        
-        # Move the haplotype file
+        # Define output file paths
         haplotype_file = os.path.join(output_subdir, f"{subdir}_contigs.fasta")
-        os.makedirs(os.path.dirname(haplotype_file), exist_ok=True)
-        command3 = f"mv {output_subdir}/haplotypes.final.fa {haplotype_file}"
-        subprocess.run(command3, shell=True, check=True)
+        final_haplotype_file = os.path.join(output_subdir, "haplotypes.final.fa")
+
+        try:
+            # Run the strainline command
+            command1 = f"/app/Strainline/src/strainline.sh -i {subdir_path}/reads.corrected.tmp2.fa -o {output_subdir} -p ont --maxLD ${maxLD_floats} --maxGD ${maxGD_floats} --rmMisassembly ${rmMisassembly_bool} --correctErr ${correctErr_bool} --minAbun ${minAbun_floats} -k ${topks} --minOvlpLen ${minovlplens} --minSeedLen ${minseedlens} --maxOH ${maxohs} --threads ${cpu}"
+            subprocess.run(command1, shell=True, check=True)
+
+            # Check if haplotypes.final.fa was created
+            if os.path.exists(final_haplotype_file):
+                # If the file exists, move it
+                command2 = f"mv {final_haplotype_file} {haplotype_file}"
+                subprocess.run(command2, shell=True, check=True)
+            else:
+                # If the file does not exist, create a zero-byte file
+                with open(haplotype_file, 'w') as f:
+                    pass
+
+        except subprocess.CalledProcessError as e:
+            print(f"Error occurred for {subdir}: {e}")
+            # Create a zero-byte file in case of failure
+            with open(haplotype_file, 'w') as f:
+                pass
+
     """
 }
 
@@ -522,6 +585,7 @@ process runHaplotype {
 
 process runPolish_medaka {
     tag {"polish_medaka"}
+    errorStrategy 'ignore'
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
@@ -559,28 +623,37 @@ process runPolish_medaka {
         # Get the corresponding mapped file
         mapped_file = os.path.join(mapped_dir, subdir, f"{subdir}_mapped_reads.fastq")
 
-        # Print the file paths for debugging
-        print("Assembled contigs file:", os.path.join(subdir_path, f"{subdir}_contigs.fasta"))
-        print("Mapped reads file:", mapped_file)
-
-        # Check the file sizes for debugging
-        print("Assembled contigs file size:", os.path.getsize(os.path.join(subdir_path, f"{subdir}_contigs.fasta")))
-        print("Mapped reads file size:", os.path.getsize(mapped_file))
-
-        # Run the medaka 
-        command1 = f"medaka_consensus -i {mapped_file} \
-                         -d {subdir_path}/{subdir}_contigs.fasta \
-                         -o {output_subdir} \
-                         -t ${cpu}"
-        subprocess.run(command1, shell=True, check=True)
-        
-        # Move the medaka file
+        # Define output file paths
         polish_medaka_file = os.path.join(output_subdir, f"{subdir}_polish_medaka.fasta")
-        os.makedirs(os.path.dirname(polish_medaka_file), exist_ok=True)
-        command2 = f"mv {output_subdir}/consensus.fasta {polish_medaka_file}"
-        subprocess.run(command2, shell=True, check=True)
+        consensus_file = os.path.join(output_subdir, "consensus.fasta")
+
+        try:
+            # Run the medaka consensus command
+            command1 = f"medaka_consensus -i {mapped_file} \
+                             -d {subdir_path}/{subdir}_contigs.fasta \
+                             -o {output_subdir} \
+                             -t ${cpu}"
+            subprocess.run(command1, shell=True, check=True)
+
+            # Check if the consensus.fasta file was created
+            if os.path.exists(consensus_file):
+                # If the file exists, move it to the expected output file
+                command2 = f"mv {consensus_file} {polish_medaka_file}"
+                subprocess.run(command2, shell=True, check=True)
+            else:
+                # If the file does not exist, create a zero-byte placeholder
+                with open(polish_medaka_file, 'w') as f:
+                    pass
+
+        except subprocess.CalledProcessError as e:
+            print(f"Error occurred for {subdir}: {e}")
+            # Create a zero-byte file in case of failure
+            with open(polish_medaka_file, 'w') as f:
+                pass
+
     """
 }
+
 
 /*
 * Run polishing_pilon
@@ -588,6 +661,7 @@ process runPolish_medaka {
 
 process runPolish_pilon {
     tag {"polish_pilon"}
+    errorStrategy 'ignore'
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
@@ -612,7 +686,7 @@ process runPolish_pilon {
     output_dir = os.path.join(os.path.dirname(polished), "pilon")
     os.makedirs(output_dir, exist_ok=True)
 
-    # Get the subdirectories in the assembled directory
+    # Get the subdirectories in the polished directory
     subdirs = [d for d in os.listdir(polished) if os.path.isdir(os.path.join(polished, d))]
 
     for subdir in subdirs:
@@ -626,28 +700,39 @@ process runPolish_pilon {
         # Get the corresponding mapped file
         mapped_file = os.path.join(mapped_dir, subdir, f"{subdir}_mapped_reads.fastq")
 
-        # Print the file paths for debugging
-        print("Assembled contigs file:", os.path.join(subdir_path, f"{subdir}_polish_medaka.fasta"))
-        print("Mapped reads file:", mapped_file)
+        # Define the output pilon files
+        pilon_output_prefix = os.path.join(output_subdir, f"{subdir}_polishing")
+        pilon_vcf_file = f"{pilon_output_prefix}.vcf"
 
-        # Check the file sizes for debugging
-        print("Assembled contigs file size:", os.path.getsize(os.path.join(subdir_path, f"{subdir}_polish_medaka.fasta")))
-        print("Mapped reads file size:", os.path.getsize(mapped_file))
+        try:
+            # Run the pilon polishing pipeline
+            command1 = f"bwa index {subdir_path}/{subdir}_polish_medaka.fasta && \
+                         bwa mem -t ${cpu} {subdir_path}/{subdir}_polish_medaka.fasta {mapped_file} | \
+                         samtools sort -@ ${cpu} | \
+                         samtools markdup /dev/stdin {output_subdir}/{subdir}_cons_ali_filter.bam && \
+                         samtools view -b -@ ${cpu} -q ${min_mq} {output_subdir}/{subdir}_cons_ali_filter.bam \
+                                              -o {output_subdir}/{subdir}_cons_ali_dup_filter.bam && \
+                         samtools index -@ ${cpu} {output_subdir}/{subdir}_cons_ali_dup_filter.bam && \
+                         pilon -Xmx4096m -XX:-UseGCOverheadLimit \
+                               --genome {subdir_path}/{subdir}_polish_medaka.fasta \
+                               --unpaired {output_subdir}/{subdir}_cons_ali_dup_filter.bam \
+                               --output {pilon_output_prefix} \
+                               --vcf"
+            subprocess.run(command1, shell=True, check=True)
 
-        # Run the pilon 
-        command1 = f"bwa index {subdir_path}/{subdir}_polish_medaka.fasta && \
-                     bwa mem -t ${cpu} {subdir_path}/{subdir}_polish_medaka.fasta {mapped_file} | \
-                     samtools sort -@ ${cpu} | \
-                     samtools markdup /dev/stdin {output_subdir}/{subdir}_cons_ali_filter.bam && \
-                     samtools view -b -@ ${cpu} -q ${min_mq} {output_subdir}/{subdir}_cons_ali_filter.bam \
-                                          -o {output_subdir}/{subdir}_cons_ali_dup_filter.bam && \
-                     samtools index -@ ${cpu} {output_subdir}/{subdir}_cons_ali_dup_filter.bam && \
-                     pilon -Xmx4096m -XX:-UseGCOverheadLimit \
-                           --genome {subdir_path}/{subdir}_polish_medaka.fasta \
-                           --unpaired {output_subdir}/{subdir}_cons_ali_dup_filter.bam \
-                           --output {output_subdir}/{subdir}_polishing \
-                           --vcf"
-        subprocess.run(command1, shell=True, check=True)
+            # Check if the pilon VCF file was created
+            if os.path.exists(pilon_vcf_file):
+                print(f"Pilon polishing completed successfully for {subdir}.")
+            else:
+                # If the VCF file does not exist, create a zero-byte placeholder
+                with open(pilon_vcf_file, 'w') as f:
+                    pass
+
+        except subprocess.CalledProcessError as e:
+            print(f"Error occurred for {subdir}: {e}")
+            # Create a zero-byte placeholder file in case of failure
+            with open(pilon_vcf_file, 'w') as f:
+                pass
     """
 }
 
@@ -660,6 +745,7 @@ process runPolish_pilon {
 process runProovframe {
     label 'bonobo_img'
     tag {"proovframe"}
+    errorStrategy 'ignore'
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
@@ -770,6 +856,7 @@ process runSeqrenaming {
 }
 
 
+
 workflow {
     if (params.basecalling == 'OFF') {
         runChopper(params.in_fastq, params.cpu, params.upperlength, params.phred, params.lowerlength)
@@ -781,15 +868,16 @@ workflow {
 
    runBarcoding(runChopper.out.choped, params.barcods, params.cpu, params.min_score_rear_barcode, params.min_score_front_barcode)
    runMapping(runBarcoding.out.demultiplexed, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
-   runErrcorrect(runMapping.out.mapped, params.cpu, params.repr_percentile, params.score_threshold, params.kmer_size)
+   runErrcorrectVechat(runMapping.out.mapped, params.cpu, params.split_size, params.cudapoa_batches, params.cudaaligner_batches, params.phred)
+ 
 
     if (params.pipeline == 'assembly') {
-       runAssembly(runErrcorrect.out.corrected, params.genomesize)
+       runAssembly(runErrcorrectVechat.out.corrected, params.genomesize)
        runPolish_medaka(runAssembly.out.draftgenome, runMapping.out.mapped, params.cpu)
    }
 
     else if (params.pipeline == 'haplotype') {
-       runHaplotype(runErrcorrect.out.corrected, params.cpu, params.maxLD_floats, params.rmMisassembly_bool, params.correctErr_bool, params.minAbun_floats, params.maxGD_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs)
+       runHaplotype(runErrcorrectVechat.out.corrected, params.cpu, params.maxLD_floats, params.rmMisassembly_bool, params.correctErr_bool, params.minAbun_floats, params.maxGD_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs)
        runPolish_medaka(runHaplotype.out.draftgenome, runMapping.out.mapped, params.cpu)
    }
 

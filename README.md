@@ -36,20 +36,16 @@ BonoboFlow is a nextflow pipeline for reproducible and precise execution of vira
 ## Installation
 
 BonoboFlow requires:
- **nextflow** (version 22.10.4)
- docker
- singularity
+ **nextflow** (version 24.04.2)
+ docker or singularity
 
 
 We recommend to install the packages as follow
 
 ```bash
 git clone https://github.com/nchis09/BonoboFlow.git && \
-conda create -n bonoboflow -c bioconda -c conda-forge openjdk=11.0.8 nextflow=24.04.2  python cmake spoa && \
-conda activate bonoboflow && \
-cd BonoboFlow/packages/RATTLE && \
-./build.sh && \
-cd ../../
+conda create -n bonoboflow -c bioconda -c conda-forge openjdk=11 nextflow=24.04.2  python && \
+conda activate bonoboflow
 ```
 
 ```bash
@@ -64,7 +60,7 @@ The pipeline takes in the FAST5/POD5 or FASTQ file from Nanopore sequencing tech
 ```bash
 conda activate bonoboflow
 
-nextflow run BonoboFlow.nf -resume --ref_genome <directory to reference genome> --in_fastq <directory to input files> --outfile <directory to output files> --sample_id <csv of sample IDs and barcode ID> -w <directory to save the work files>
+nextflow run BonoboFlow.nf -resume  --in_fastq <directory to input files> --outfile <directory to output files> --ref_genome <directory to reference genome> --sample_id <csv of sample IDs and barcode ID> -w <directory to save the work files>
 
     
 
@@ -101,6 +97,10 @@ Error_correction arguments:
       --repr_percentile           cluster representative percentile (default: 0.15)
       --score_threshold           minimum score for two reads to be in the same gene cluster (default: 0.2)
       --kmer_size                 k-mer size for isoform clustering (default: 11, maximum: 16)
+      --split-size                split target sequences into chunks of desired size in lines, only valid when using --split (default: 10000)
+      --cudapoa_batches           number of batches for CUDA accelerated polishing (default: 0)
+      --cudaaligner-batches       number of batches for CUDA accelerated alignment (default: 0)
+      
 
 Haplotype arguments:
       --maxLD_floats              Maximum local divergence allowed for merging haplotypes. (default: 0.01)
@@ -142,6 +142,7 @@ Mandatory parameters
 * `--in_fastq `:            Path to input fastq dirctory
 * `--sample_id`:           a csv file containing barcode_Ids and sample Ids
 * `--ref_genome`:           reference sequence
+ 
 
 
 Optional parameters
