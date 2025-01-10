@@ -460,6 +460,7 @@ process runAssembly {
     input:
     path (corrected)
     val (genomesize)
+    val (cpu)
     
     output:
     path("assembly"), emit: draftgenome
@@ -489,7 +490,7 @@ process runAssembly {
         os.makedirs(output_subdir, exist_ok=True)
 
         # Run the assembly 
-        command1 = f"flye --meta --genome-size ${genomesize} --nano-raw {subdir_path}/{subdir}_corrected.fastq --no-alt-contigs --out-dir {output_subdir}"
+        command1 = f"flye --genome-size ${genomesize} --threads ${cpu} --nano-raw {subdir_path}/reads.corrected.tmp2.fa --no-alt-contigs --scaffold --trestle --out-dir {output_subdir}"
         subprocess.run(command1, shell=True, check=True)
         
         # Move the assembly file
@@ -855,33 +856,93 @@ process runSeqrenaming {
     """
 }
 
+/*
+* Run Mapping withought demultiplexing
+*/
+
+process runMapping_2 {
+    tag 'mapping'
+    label 'bonobo_img'
+    publishDir path: "${params.outfile}", mode: "copy", overwrite: false
+
+    input:
+    path chopped
+    path ref_genome
+    val lowerlength
+    val upperlength
+    val cpu
+
+    output:
+    path "mapped_reads", emit: mapped
+
+    script:
+    """
+        # Ensure the output directories exist
+        mkdir -p mapped_reads/barcodex
+
+        # Run bwa index on the reference genome
+        bwa index "${ref_genome}" || { echo 'BWA index failed'; exit 1; }
+
+        # Align reads with bwa mem, then sort with samtools
+        bwa mem -t ${cpu} "${ref_genome}" ${chopped}/*.fastq | \
+        samtools sort -@ ${cpu} -o mapped_reads/barcodex/barcodex_align_sorted.bam || { echo 'BWA mem or Samtools sort failed'; exit 1; }
+
+        # Convert BAM to FASTQ
+        samtools bam2fq mapped_reads/barcodex/barcodex_align_sorted.bam > mapped_reads/barcodex/barcodex_pre_mapped_reads.fastq || { echo 'Samtools BAM to FASTQ conversion failed'; exit 1; }
+
+        # Filter reads based on length using filtlong
+        filtlong --min_length ${lowerlength} --max_length ${upperlength} mapped_reads/barcodex/barcodex_pre_mapped_reads.fastq > mapped_reads/barcodex/barcodex_mapped_reads.fastq || { echo 'Filtlong filtering failed'; exit 1; }
+
+        # Clean up intermediate files if needed
+        rm mapped_reads/barcodex/barcodex_pre_mapped_reads.fastq
+    """
+}
+
 
 
 workflow {
     if (params.basecalling == 'OFF') {
         runChopper(params.in_fastq, params.cpu, params.upperlength, params.phred, params.lowerlength)
     }
+
     else if (params.basecalling == 'ON') {
         runDorado(params.raw_file, params.cpu, params.basecallers, params.model)
         runChopper(runDorado.out.in_fastq, params.cpu, params.upperlength, params.phred, params.lowerlength)
         }
 
-   runBarcoding(runChopper.out.choped, params.barcods, params.cpu, params.min_score_rear_barcode, params.min_score_front_barcode)
-   runMapping(runBarcoding.out.demultiplexed, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
-   runErrcorrectVechat(runMapping.out.mapped, params.cpu, params.split_size, params.cudapoa_batches, params.cudaaligner_batches, params.phred)
+    if (params.demultiplexing == 'ON') {
+        runBarcoding(runChopper.out.choped, params.barcods, params.cpu, params.min_score_rear_barcode, params.min_score_front_barcode)
+        runMapping(runBarcoding.out.demultiplexed, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
+        runErrcorrectVechat(runMapping.out.mapped, params.cpu, params.split_size, params.cudapoa_batches, params.cudaaligner_batches, params.phred)
  
+        if (params.pipeline == 'assembly') {
+            runAssembly(runErrcorrectVechat.out.corrected, params.genomesize, params.cpu)
+            runPolish_medaka(runAssembly.out.draftgenome, runMapping.out.mapped, params.cpu)
+        }
 
-    if (params.pipeline == 'assembly') {
-       runAssembly(runErrcorrectVechat.out.corrected, params.genomesize)
-       runPolish_medaka(runAssembly.out.draftgenome, runMapping.out.mapped, params.cpu)
-   }
+         else if (params.pipeline == 'haplotype') {
+            runHaplotype(runErrcorrectVechat.out.corrected, params.cpu, params.maxLD_floats, params.rmMisassembly_bool, params.correctErr_bool, params.minAbun_floats, params.maxGD_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs)
+            runPolish_medaka(runHaplotype.out.draftgenome, runMapping.out.mapped, params.cpu)
+        }
+        runPolish_pilon(runPolish_medaka.out.medaka, runMapping.out.mapped, params.min_mq, params.cpu)
+    }
 
-    else if (params.pipeline == 'haplotype') {
-       runHaplotype(runErrcorrectVechat.out.corrected, params.cpu, params.maxLD_floats, params.rmMisassembly_bool, params.correctErr_bool, params.minAbun_floats, params.maxGD_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs)
-       runPolish_medaka(runHaplotype.out.draftgenome, runMapping.out.mapped, params.cpu)
-   }
+    else if (params.demultiplexing == 'OFF') {
+        runMapping_2(runChopper.out.choped, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
+        runErrcorrectVechat(runMapping_2.out.mapped, params.cpu, params.split_size, params.cudapoa_batches, params.cudaaligner_batches, params.phred)
+    
+         if (params.pipeline == 'assembly') {
+            runAssembly(runErrcorrectVechat.out.corrected, params.genomesize, params.cpu)
+            runPolish_medaka(runAssembly.out.draftgenome, runMapping_2.out.mapped, params.cpu)
+        }
 
-   runPolish_pilon(runPolish_medaka.out.medaka, runMapping.out.mapped, params.min_mq, params.cpu)
+         else if (params.pipeline == 'haplotype') {
+            runHaplotype(runErrcorrectVechat.out.corrected, params.cpu, params.maxLD_floats, params.rmMisassembly_bool, params.correctErr_bool, params.minAbun_floats, params.maxGD_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs)
+            runPolish_medaka(runHaplotype.out.draftgenome, runMapping_2.out.mapped, params.cpu)
+        }
+        runPolish_pilon(runPolish_medaka.out.medaka, runMapping_2.out.mapped, params.min_mq, params.cpu)
+    }
+
    runProovframe(runPolish_pilon.out.pilon)
    runSeqrenaming(runProovframe.out.final_seq, params.sample_id)
 }
