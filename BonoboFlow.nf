@@ -34,15 +34,15 @@ def helpMessage() {
 To run BonoboFlow, use the following command:
 
  \
-conda activate nextflow
+conda activate bonoboflow
 
-nextflow run BonoboFlow.nf -resume \
---ref_genome <directory to reference genome> \
---in_fastq <directory to input files> \
---outfile <directory to output files> \
---sample_id <csv of sample IDs and barcode ID> \
--w <directory to save the work files> 
+nextflow run BonoboFlow.nf -resume  --in_fastq <directory to input files> \
+                                    --outfile <directory to output files> \
+                                    --ref_genome <directory to reference genome> \
+                                    --sample_id <csv of sample IDs and barcode ID> \
+                                    -w <directory to save the work files>
 
+    
 
 Mandatory arguments:
       --in_fastq                  Path to input fastq dirctory. Note: If you specify this you dont have to specify the  --raw_file
@@ -70,17 +70,26 @@ Barcoding arguments:
       --min_score_rear_barcode    minimum quality of of rear barcode (default: 75)
       --min_score_front_barcode   minimum quality of a rear barcode (default: 75)
 
-Error_correction arguments:
-      --repr-percentile           cluster representative percentile (default: 0.15)
-      --score-threshold           minimum score for two reads to be in the same gene cluster (default: 0.2)
-      --kmer-size                 k-mer size for isoform clustering (default: 11, maximum: 16)
+mapping argements:
+      --min_mq                    have mapping quality (default: 30)
+
+Error_correction with rattle arguments:
+      --repr_percentile           cluster representative percentile (default: 0.15)
+      --score_threshold           minimum score for two reads to be in the same gene cluster (default: 0.2)
+      --kmer_size                 k-mer size for isoform clustering (default: 11, maximum: 16)
+
+Error_correction with vechat arguments:
+      --split-size                split target sequences into chunks of desired size in lines (default: 5000)
+      --cudapoa_batches           number of batches for CUDA accelerated polishing (default: 0)
+      --cudaaligner-batches       number of batches for CUDA accelerated alignment (default: 0)
       
+
 Haplotype arguments:
-      --maxLD-floats              Maximum local divergence allowed for merging haplotypes. (default: 0.01)
-      --maxGD-floats              Maximum global divergence allowed for merging haplotypes. (default: 0.01)
-      --rmMisassembly-bool        Break contigs at potential misassembled positions (default: False)
-      --correctErr-bool           Perform error correction for input reads (default: False)
-      --minAbun-floats            Minimum abundance for filtering haplotypes (default: 0.02)
+      --maxLD_floats              Maximum local divergence allowed for merging haplotypes. (default: 0.05)
+      --maxGD_floats              Maximum global divergence allowed for merging haplotypes. (default: 0.05)
+      --rmMisassembly_bool        Break contigs at potential misassembled positions (default: False)
+      --correctErr_bool           Perform error correction for input reads (default: False)
+      --minAbun_floats            Minimum abundance for filtering haplotypes (default: 0.02)
       --topks                     k seed reads size for haplotype construction (default: 100)
       --minovlplens               Minimum read overlap length. (default: 1000)
       --minseedlens               Minimum seed read length. (default: 2000)
@@ -336,63 +345,6 @@ process runMapping {
         mapped_file = os.path.join(output_subdir, f"{barcode_id}_mapped_reads.fastq")
         command = f"filtlong --min_length {lowerlength} --max_length {upperlength} {fq_file} > {mapped_file}"
         subprocess.run(command, shell=True, check=True)
-    """
-}
-
-
-/*
-* Run error_correction_rattle
-*/
-
-process runErrcorrect_rattle {
-    tag {"error_correction"}
-    label 'small_mem'
-    publishDir "${params.outfile}", mode: "copy", overwrite: false
-
-    input:
-    path (mapped)
-    val (cpu)
-    val (repr_percentile)
-    val (score_threshold)
-    val (kmer_size)
-
-    output:
-    path("error_correction"), emit: corrected
-
-    script:
-    """
-    #!/usr/bin/env python
-
-    import os
-    import subprocess
-
-    mapped_dir = "${mapped}"
-    output_dir = os.path.join(os.path.dirname(mapped_dir), "error_correction")
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Get the subdirectories in the mapped directory
-    subdirs = [d for d in os.listdir(mapped_dir) if os.path.isdir(os.path.join(mapped_dir, d))]
-
-    for subdir in subdirs:
-        if not subdir.startswith("bar"):
-            continue
-
-        subdir_path = os.path.join(mapped_dir, subdir)
-        output_subdir = os.path.join(output_dir, subdir)
-        os.makedirs(output_subdir, exist_ok=True)
-
-        # Run the error correction 
-        command1 = f"${baseDir}/packages/RATTLE/rattle cluster -i {subdir_path}/{subdir}_mapped_reads.fastq -p ${repr_percentile} -s ${score_threshold} -t ${cpu} --iso-kmer-size ${kmer_size} -o {output_subdir}"
-        subprocess.run(command1, shell=True, check=True)
-
-        command2 = f"${baseDir}/packages/RATTLE/rattle correct -i {subdir_path}/{subdir}_mapped_reads.fastq -c {output_subdir}/clusters.out -t ${cpu} -o {output_subdir}"
-        subprocess.run(command2, shell=True, check=True)
-
-        # Move the corrected file
-        corrected_file = os.path.join(output_subdir, f"{subdir}_corrected.fastq")
-        os.makedirs(os.path.dirname(corrected_file), exist_ok=True)
-        command3 = f"mv {output_subdir}/corrected.fq {corrected_file}"
-        subprocess.run(command3, shell=True, check=True)
     """
 }
 
@@ -893,6 +845,68 @@ process runMapping_2 {
 }
 
 
+/*
+* Run error_correction_rattle
+*/
+
+
+process runErrcorrectRattle {
+    tag {"error_correction"}
+    label 'small_mem'
+    publishDir "${params.outfile}", mode: "copy", overwrite: false
+
+    input:
+    path (mapped)
+    val (cpu)
+    val (repr_percentile)
+    val (score_threshold)
+    val (kmer_size)
+
+    output:
+    path("error_correction"), emit: corrected
+
+    script:
+    """
+    #!/usr/bin/env python
+
+    import os
+    import subprocess
+
+    mapped_dir = "${mapped}"
+    output_dir = os.path.join(os.path.dirname(mapped_dir), "error_correction")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Get the subdirectories in the mapped directory
+    subdirs = [d for d in os.listdir(mapped_dir) if os.path.isdir(os.path.join(mapped_dir, d))]
+
+    for subdir in subdirs:
+        if not subdir.startswith("bar"):
+            continue
+
+        subdir_path = os.path.join(mapped_dir, subdir)
+        output_subdir = os.path.join(output_dir, subdir)
+        os.makedirs(output_subdir, exist_ok=True)
+
+        # Run the error correction 
+        command1 = f"/usr/bin/rattle cluster -i {subdir_path}/{subdir}_mapped_reads.fastq -p ${repr_percentile} -s ${score_threshold} -t ${cpu} --iso-kmer-size ${kmer_size} -o {output_subdir}"
+        subprocess.run(command1, shell=True, check=True)
+
+        command2 = f"/usr/bin/rattle correct -i {subdir_path}/{subdir}_mapped_reads.fastq -c {output_subdir}/clusters.out -t ${cpu} -o {output_subdir}"
+        subprocess.run(command2, shell=True, check=True)
+
+        # Move the corrected file
+        corrected_file = os.path.join(output_subdir, f"{subdir}_corrected.fastq")
+        os.makedirs(os.path.dirname(corrected_file), exist_ok=True)
+        command3 = f"mv {output_subdir}/corrected.fq {corrected_file}"
+        subprocess.run(command3, shell=True, check=True)
+    """
+}
+
+
+
+/*
+* Workflow
+*/
 
 workflow {
     if (params.basecalling == 'OFF') {
@@ -907,15 +921,24 @@ workflow {
     if (params.demultiplexing == 'ON') {
         runBarcoding(runChopper.out.choped, params.barcods, params.cpu, params.min_score_rear_barcode, params.min_score_front_barcode)
         runMapping(runBarcoding.out.demultiplexed, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
-        runErrcorrectVechat(runMapping.out.mapped, params.cpu, params.gpu)
+        
+        // Run error correction based on selected tool
+        if (params.error_correction_tool == 'vechat') {
+            runErrcorrectVechat(runMapping.out.mapped, params.cpu, params.gpu)
+        } else if (params.error_correction_tool == 'rattle') {
+            runErrcorrectRattle(runMapping.out.mapped, params.cpu, params.repr_percentile, params.score_threshold, params.kmer_size)
+        }
+
+        // Get the appropriate corrected reads channel
+        def corrected_reads = params.error_correction_tool == 'vechat' ? runErrcorrectVechat.out.corrected : runErrcorrectRattle.out.corrected
  
         if (params.pipeline == 'assembly') {
-            runAssembly(runErrcorrectVechat.out.corrected, params.genomesize, params.cpu)
+            runAssembly(corrected_reads, params.genomesize, params.cpu)
             runPolish_medaka(runAssembly.out.draftgenome, runMapping.out.mapped, params.cpu)
         }
 
          else if (params.pipeline == 'haplotype') {
-            runHaplotype(runErrcorrectVechat.out.corrected, params.cpu, params.maxLD_floats, params.rmMisassembly_bool, params.correctErr_bool, params.minAbun_floats, params.maxGD_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs)
+            runHaplotype(corrected_reads, params.cpu, params.maxLD_floats, params.rmMisassembly_bool, params.correctErr_bool, params.minAbun_floats, params.maxGD_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs)
             runPolish_medaka(runHaplotype.out.draftgenome, runMapping.out.mapped, params.cpu)
         }
         runPolish_pilon(runPolish_medaka.out.medaka, runMapping.out.mapped, params.min_mq, params.cpu)
@@ -923,15 +946,24 @@ workflow {
 
     else if (params.demultiplexing == 'OFF') {
         runMapping_2(runChopper.out.choped, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
-        runErrcorrectVechat(runMapping_2.out.mapped, params.cpu, params.gpu)
+        
+        // Run error correction based on selected tool
+        if (params.error_correction_tool == 'vechat') {
+            runErrcorrectVechat(runMapping_2.out.mapped, params.cpu, params.gpu)
+        } else if (params.error_correction_tool == 'rattle') {
+            runErrcorrectRattle(runMapping_2.out.mapped, params.cpu, params.repr_percentile, params.score_threshold, params.kmer_size)
+        }
+
+        // Get the appropriate corrected reads channel
+        def corrected_reads = params.error_correction_tool == 'vechat' ? runErrcorrectVechat.out.corrected : runErrcorrectRattle.out.corrected_reads
     
-         if (params.pipeline == 'assembly') {
-            runAssembly(runErrcorrectVechat.out.corrected, params.genomesize, params.cpu)
+        if (params.pipeline == 'assembly') {
+            runAssembly(corrected_reads, params.genomesize, params.cpu)
             runPolish_medaka(runAssembly.out.draftgenome, runMapping_2.out.mapped, params.cpu)
         }
 
-         else if (params.pipeline == 'haplotype') {
-            runHaplotype(runErrcorrectVechat.out.corrected, params.cpu, params.maxLD_floats, params.rmMisassembly_bool, params.correctErr_bool, params.minAbun_floats, params.maxGD_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs)
+        else if (params.pipeline == 'haplotype') {
+            runHaplotype(corrected_reads, params.cpu, params.maxLD_floats, params.rmMisassembly_bool, params.correctErr_bool, params.minAbun_floats, params.maxGD_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs)
             runPolish_medaka(runHaplotype.out.draftgenome, runMapping_2.out.mapped, params.cpu)
         }
         runPolish_pilon(runPolish_medaka.out.medaka, runMapping_2.out.mapped, params.min_mq, params.cpu)

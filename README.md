@@ -93,18 +93,20 @@ Barcoding arguments:
 mapping argements:
       --min_mq                    have mapping quality (default: 30)
 
-Error_correction arguments:
+Error_correction with rattle arguments:
       --repr_percentile           cluster representative percentile (default: 0.15)
       --score_threshold           minimum score for two reads to be in the same gene cluster (default: 0.2)
       --kmer_size                 k-mer size for isoform clustering (default: 11, maximum: 16)
-      --split-size                split target sequences into chunks of desired size in lines, only valid when using --split (default: 10000)
+
+Error_correction with vechat arguments:
+      --split-size                split target sequences into chunks of desired size in lines (default: 5000)
       --cudapoa_batches           number of batches for CUDA accelerated polishing (default: 0)
       --cudaaligner-batches       number of batches for CUDA accelerated alignment (default: 0)
       
 
 Haplotype arguments:
-      --maxLD_floats              Maximum local divergence allowed for merging haplotypes. (default: 0.01)
-      --maxGD_floats              Maximum global divergence allowed for merging haplotypes. (default: 0.01)
+      --maxLD_floats              Maximum local divergence allowed for merging haplotypes. (default: 0.05)
+      --maxGD_floats              Maximum global divergence allowed for merging haplotypes. (default: 0.05)
       --rmMisassembly_bool        Break contigs at potential misassembled positions (default: False)
       --correctErr_bool           Perform error correction for input reads (default: False)
       --minAbun_floats            Minimum abundance for filtering haplotypes (default: 0.02)
