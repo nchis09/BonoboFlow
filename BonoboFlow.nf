@@ -409,10 +409,7 @@ process runErrcorrectVechat {
     input:
     path (mapped)
     val (cpu)
-    val (split_size)
-    val (cudapoa_batches)
-    val (cudaaligner_batches)
-    val (phred)
+    val (gpu)
 
     output:
     path("error_correction"), emit: corrected
@@ -436,17 +433,14 @@ process runErrcorrectVechat {
         output_subdir = os.path.join(output_dir, subdir)
         os.makedirs(output_subdir, exist_ok=True)
 
-        # Run the error correction
-        command1 = f"vechat {subdir_path}/{subdir}_mapped_reads.fastq -t ${cpu} --platform ont --split --split-size ${split_size} --scrub -c ${cudapoa_batches} --cudaaligner-batches ${cudaaligner_batches} -q ${phred} -o {output_subdir}"
-        subprocess.run(command1, shell=True, check=True)
+        # Define the desired output file path
+        corrected_output = os.path.join(output_subdir, f"{subdir}_corrected.fasta")
 
-        # Move the corrected file
-        corrected_file = os.path.join(output_subdir, f"{subdir}_corrected.fasta")
-        if os.path.exists(os.path.join(output_subdir, "corrected.fasta")):
-            os.rename(os.path.join(output_subdir, "corrected.fasta"), corrected_file)
+        # Run the error correction with direct output naming
+        command1 = f"vechat {subdir_path}/{subdir}_mapped_reads.fastq --threads ${cpu} --platform ont --cudapoa-batches ${gpu} --cudaaligner-batches ${gpu} --split --split-size 5000 -o {corrected_output}"
+        subprocess.run(command1, shell=True, check=True)
     """
 }
-
 
 /*
 * Run genome_assembly
@@ -913,7 +907,7 @@ workflow {
     if (params.demultiplexing == 'ON') {
         runBarcoding(runChopper.out.choped, params.barcods, params.cpu, params.min_score_rear_barcode, params.min_score_front_barcode)
         runMapping(runBarcoding.out.demultiplexed, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
-        runErrcorrectVechat(runMapping.out.mapped, params.cpu, params.split_size, params.cudapoa_batches, params.cudaaligner_batches, params.phred)
+        runErrcorrectVechat(runMapping.out.mapped, params.cpu, params.gpu)
  
         if (params.pipeline == 'assembly') {
             runAssembly(runErrcorrectVechat.out.corrected, params.genomesize, params.cpu)
@@ -929,7 +923,7 @@ workflow {
 
     else if (params.demultiplexing == 'OFF') {
         runMapping_2(runChopper.out.choped, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
-        runErrcorrectVechat(runMapping_2.out.mapped, params.cpu, params.split_size, params.cudapoa_batches, params.cudaaligner_batches, params.phred)
+        runErrcorrectVechat(runMapping_2.out.mapped, params.cpu, params.gpu)
     
          if (params.pipeline == 'assembly') {
             runAssembly(runErrcorrectVechat.out.corrected, params.genomesize, params.cpu)
