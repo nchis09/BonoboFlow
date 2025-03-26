@@ -312,7 +312,7 @@ process runMapping {
             continue
         fi
 
-        barcode_id=$(basename "$barcode_dir")
+        barcode_id=`basename "$barcode_dir"`
         output_subdir="mapped_reads/${barcode_id}"
         mkdir -p "$output_subdir"
 
