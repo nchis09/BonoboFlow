@@ -289,63 +289,55 @@ process runMapping {
     publishDir path: "${params.outfile}", mode: "copy", overwrite: false
 
     input:
-    path (demultiplexed)
-    path (ref_genome)
-    val (lowerlength)
-    val (upperlength)
-    val (cpu)
+    path demultiplexed
+    path ref_genome
+    val lowerlength
+    val upperlength
+    val cpu
 
     output:
-    path("mapped_reads"), emit: mapped
+    path "mapped_reads", emit: mapped
 
     script:
     """
-    #!/usr/bin/env python
+    #!/bin/bash
+    set -e  # Exit on error
 
-    import os
-    import subprocess
+    # Ensure output directory exists
+    mkdir -p mapped_reads
 
-    demultiplexed_dir = "${demultiplexed}"
-    ref_gen = "${ref_genome}"  
-    lowerlength = "${lowerlength}"
-    upperlength = "${upperlength}"
+    # Copy reference genome to output directory
+    cp "${ref_genome}" mapped_reads/
 
-    output_dir = os.path.join(os.path.dirname(demultiplexed_dir), "mapped_reads")
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Copy the reference genome to the demultiplexed folder
-    ref_genome_dest = os.path.join(demultiplexed_dir, os.path.basename(ref_gen))
-    shutil.copyfile(ref_gen, ref_genome_dest)
-
-    for dir in os.listdir(demultiplexed_dir):
-        if not dir.startswith("bar"):
+    # Iterate over barcode directories
+    for barcode_dir in ${demultiplexed}/*; do
+        if [[ ! -d "$barcode_dir" ]]; then
             continue
+        fi
 
-        barcode_id = dir
-        dir_path = os.path.join(demultiplexed_dir, dir)
+        barcode_id=$(basename "$barcode_dir")
+        output_subdir="mapped_reads/${barcode_id}"
+        mkdir -p "$output_subdir"
 
-        if dir == 'barcoding_summary.txt':  # Skip the barcoding_summary.txt file
-            continue
+        # Align reads with Minimap2 and sort with Samtools
+        minimap2 -ax map-ont --eqx --MD --cs=long -t ${cpu} "${ref_genome}" ${barcode_dir}/*.fastq | \
+        samtools sort -@ ${cpu} -o "${output_subdir}/${barcode_id}_align_sorted.bam" || { echo 'Minimap2 or Samtools sort failed'; exit 1; }
 
-        output_subdir = os.path.join(output_dir, dir)
-        os.makedirs(output_subdir, exist_ok=True)
+        # Extract IDs of mapped reads
+        samtools view -F 4 "${output_subdir}/${barcode_id}_align_sorted.bam" | cut -f1 | sort | uniq > "${output_subdir}/mapped_read_ids.txt"
 
-        # Run the mapping 
-        command = f"bwa index {ref_genome_dest} && cat {dir_path}/*.fastq | bwa mem -t ${cpu} {ref_genome_dest} /dev/stdin | samtools sort -@ ${cpu} | samtools view -F 4 -o {output_subdir}/{barcode_id}_align_sorted.bam"
-        subprocess.run(command, shell=True, check=True)
+        # Retrieve original reads using SeqKit
+        seqkit grep -f "${output_subdir}/mapped_read_ids.txt" ${barcode_dir}/*.fastq > "${output_subdir}/${barcode_id}_pre_mapped_reads.fastq" || { echo 'SeqKit filtering failed'; exit 1; }
 
-        # Convert the BAM file to FASTQ
-        bam_file = os.path.join(output_subdir, f"{barcode_id}_align_sorted.bam")
-        fq_file = os.path.join(output_subdir, f"{barcode_id}_pre_mapped_reads.fastq")
-        command = f"samtools bam2fq {bam_file} > {fq_file}"
-        subprocess.run(command, shell=True, check=True)
+        # Filter reads based on length using Filtlong
+        filtlong --min_length ${lowerlength} --max_length ${upperlength} "${output_subdir}/${barcode_id}_pre_mapped_reads.fastq" > "${output_subdir}/${barcode_id}_mapped_reads.fastq" || { echo 'Filtlong filtering failed'; exit 1; }
 
-        # Filter the reads based on length
-        mapped_file = os.path.join(output_subdir, f"{barcode_id}_mapped_reads.fastq")
-        command = f"filtlong --min_length {lowerlength} --max_length {upperlength} {fq_file} > {mapped_file}"
-        subprocess.run(command, shell=True, check=True)
+        # Clean up intermediate FASTQ file
+        rm "${output_subdir}/${barcode_id}_pre_mapped_reads.fastq"
+    done
     """
 }
+
 
 
 /*
