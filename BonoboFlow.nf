@@ -300,40 +300,69 @@ process runMapping {
 
     script:
     """
-    # Ensure output directory exists
-    mkdir -p mapped_reads
+    #!/usr/bin/env python
+
+    import os
+    import subprocess
+    import glob
+
+    # Define input variables
+    demultiplexed_path = "${demultiplexed}"
+    ref_genome = "${ref_genome}"
+    lower_length = ${lowerlength}
+    upper_length = ${upperlength}
+    cpu = ${cpu}
+
+    # Create output directory
+    output_dir = os.path.join(os.getcwd(), "mapped_reads")
+    os.makedirs(output_dir, exist_ok=True)
 
     # Copy reference genome to output directory
-    cp "${ref_genome}" mapped_reads/
+    ref_copy_path = os.path.join(output_dir, os.path.basename(ref_genome))
+    subprocess.run(["cp", ref_genome, ref_copy_path], check=True)
 
-    # Iterate over barcode directories
-    for barcode_dir in ${demultiplexed}/*; do
-        if [[ ! -d "$barcode_dir" ]]; then
+    # Get all barcode directories
+    barcode_dirs = [d for d in os.listdir(demultiplexed_path) if os.path.isdir(os.path.join(demultiplexed_path, d))]
+
+    for barcode_id in barcode_dirs:
+        barcode_dir = os.path.join(demultiplexed_path, barcode_id)
+        output_subdir = os.path.join(output_dir, barcode_id)
+        os.makedirs(output_subdir, exist_ok=True)
+
+        print(f"Processing barcode: {barcode_id}")
+
+        # Get fastq files
+        fastq_files = glob.glob(os.path.join(barcode_dir, "*.fastq"))
+        if not fastq_files:
+            print(f"No FASTQ files found in {barcode_dir}, skipping...")
             continue
-        fi
 
-        barcode_id=`basename "$barcode_dir"`
-        output_subdir="mapped_reads/${barcode_id}"
-        mkdir -p "$output_subdir"
+        align_bam = os.path.join(output_subdir, f"{barcode_id}_align_sorted.bam")
+        mapped_ids_file = os.path.join(output_subdir, "mapped_read_ids.txt")
+        pre_mapped_reads = os.path.join(output_subdir, f"{barcode_id}_pre_mapped_reads.fastq")
+        mapped_reads = os.path.join(output_subdir, f"{barcode_id}_mapped_reads.fastq")
 
         # Align reads with Minimap2, then sort with Samtools
-        minimap2 -ax map-ont --eqx --MD --cs=long -t ${cpu} "${ref_genome}" ${barcode_dir}/*.fastq | \
-        samtools sort -@ ${cpu} -o "${output_subdir}/${barcode_id}_align_sorted.bam" || { echo 'Minimap2 or Samtools sort failed'; exit 1; }
+        align_cmd = f"minimap2 -ax map-ont --eqx --MD --cs=long -t {cpu} {ref_copy_path} {' '.join(fastq_files)} | " \
+                    f"samtools sort -@ {cpu} -o {align_bam}"
+        subprocess.run(align_cmd, shell=True, check=True)
 
-        # Extract IDs of mapped reads (without sequence modification)
-        samtools view -F 4 "${output_subdir}/${barcode_id}_align_sorted.bam" | cut -f1 | sort | uniq > "${output_subdir}/mapped_read_ids.txt"
+        # Extract mapped read IDs
+        extract_ids_cmd = f"samtools view -F 4 {align_bam} | cut -f1 | sort | uniq > {mapped_ids_file}"
+        subprocess.run(extract_ids_cmd, shell=True, check=True)
 
         # Retrieve original reads using seqkit
-        seqkit grep -f "${output_subdir}/mapped_read_ids.txt" ${barcode_dir}/*.fastq > "${output_subdir}/${barcode_id}_pre_mapped_reads.fastq" || { echo 'SeqKit filtering failed'; exit 1; }
+        seqkit_cmd = f"seqkit grep -f {mapped_ids_file} {' '.join(fastq_files)} > {pre_mapped_reads}"
+        subprocess.run(seqkit_cmd, shell=True, check=True)
 
         # Filter reads based on length using Filtlong
-        filtlong --min_length ${lowerlength} --max_length ${upperlength} "${output_subdir}/${barcode_id}_pre_mapped_reads.fastq" > "${output_subdir}/${barcode_id}_mapped_reads.fastq" || { echo 'Filtlong filtering failed'; exit 1; }
+        filtlong_cmd = f"filtlong --min_length {lower_length} --max_length {upper_length} {pre_mapped_reads} > {mapped_reads}"
+        subprocess.run(filtlong_cmd, shell=True, check=True)
 
-        # Clean up intermediate files if needed
-        # rm "${output_subdir}/${barcode_id}_pre_mapped_reads.fastq"
-    done
+        print(f"Completed processing for barcode: {barcode_id}")
     """
 }
+
 
 
 
@@ -905,8 +934,8 @@ process runErrcorrectRattle {
     mkdir -p error_correction
 
     for subdir in $mapped/*; do
-        if [[ -d "\$subdir" && "\$(basename \"\$subdir\")" == bar* ]]; then
-            subdir_name="\$(basename \"\$subdir\")"
+        if [[ -d "\$subdir" && "\$(basename "\$subdir")" == bar* ]]; then
+            subdir_name="\$(basename "\$subdir")"
             output_subdir="error_correction/\${subdir_name}"
             mkdir -p "\${output_subdir}"
 
