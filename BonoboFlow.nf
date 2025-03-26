@@ -232,7 +232,7 @@ process runChopper {
     val (lowerlength)
     
     output:
-    path choped_seq, emit: choped
+    path choped_seq, emit: chopped
     
     script:
     """
@@ -303,7 +303,6 @@ process runMapping {
     #!/usr/bin/env python
 
     import os
-    import shutil
     import subprocess
 
     demultiplexed_dir = "${demultiplexed}"
@@ -400,6 +399,7 @@ process runErrcorrectVechat {
 
 process runAssembly {
     tag {"genome_assembly"}
+    errorStrategy 'ignore'
     label 'bonobo_img'
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
@@ -407,10 +407,10 @@ process runAssembly {
     path (corrected)
     val (genomesize)
     val (cpu)
-    
+
     output:
     path("assembly"), emit: draftgenome
-   
+
     script:
     """
     #!/usr/bin/env python
@@ -420,7 +420,6 @@ process runAssembly {
 
     genomesize = "${genomesize}"
     corrected_dir = "${corrected}"
-
     output_dir = os.path.join(os.path.dirname(corrected_dir), "assembly")
     os.makedirs(output_dir, exist_ok=True)
 
@@ -435,23 +434,55 @@ process runAssembly {
         output_subdir = os.path.join(output_dir, subdir)
         os.makedirs(output_subdir, exist_ok=True)
 
-        # Run the assembly 
-        command1 = f"flye --genome-size ${genomesize} --threads ${cpu} --nano-raw {subdir_path}/reads.corrected.tmp2.fa --no-alt-contigs --scaffold --trestle --out-dir {output_subdir}"
-        subprocess.run(command1, shell=True, check=True)
-        
-        # Move the assembly file
-        assembled_file = os.path.join(output_subdir, f"{subdir}_contigs.fasta")
-        os.makedirs(os.path.dirname(assembled_file), exist_ok=True)
-        command2 = f"mv {output_subdir}/assembly.fasta {assembled_file}"
-        subprocess.run(command2, shell=True, check=True)
+        # Identify the corrected read file
+        corrected_read_file = None
+        for filename in os.listdir(subdir_path):
+            if filename.endswith("_corrected.fastq"):
+                corrected_read_file = os.path.join(subdir_path, filename)
+                converted_file = os.path.join(subdir_path, "reads.corrected.tmp2.fa")
+                convert_cmd = f"seqtk seq -A {corrected_read_file} > {converted_file}"
+                subprocess.run(convert_cmd, shell=True, check=True)
+                corrected_read_file = converted_file
+                break
+            elif filename.endswith("_corrected.fasta"):
+                corrected_read_file = os.path.join(subdir_path, filename)
+                break
 
+        if corrected_read_file is None:
+            print(f"No corrected read file found in {subdir_path}. Skipping...")
+            continue
+
+        # Define output file paths
+        assembled_file = os.path.join(output_subdir, f"{subdir}_contigs.fasta")
+        final_assembly_file = os.path.join(output_subdir, "assembly.fasta")
+
+        try:
+            # Run the assembly
+            command1 = f"flye --genome-size {genomesize} --threads {cpu} --nano-raw {corrected_read_file} --no-alt-contigs --scaffold --trestle --out-dir {output_subdir}"
+            subprocess.run(command1, shell=True, check=True)
+
+            # Check if assembly.fasta was created
+            if os.path.exists(final_assembly_file):
+                # If the file exists, move it
+                command2 = f"mv {final_assembly_file} {assembled_file}"
+                subprocess.run(command2, shell=True, check=True)
+            else:
+                # If the file does not exist, create a zero-byte file
+                with open(assembled_file, 'w') as f:
+                    pass
+
+        except subprocess.CalledProcessError as e:
+            print(f"Error occurred for {subdir}: {e}")
+            # Create a zero-byte file in case of failure
+            with open(assembled_file, 'w') as f:
+                pass
     """
 }
+
 
 /*
 * Run haplotype
 */
-
 process runHaplotype {
     tag {"genome_haplotype"}
     errorStrategy 'ignore'
@@ -482,7 +513,6 @@ process runHaplotype {
     import subprocess
 
     corrected_dir = "${corrected}"
-
     output_dir = os.path.join(os.path.dirname(corrected_dir), "haplotype")
     os.makedirs(output_dir, exist_ok=True)
 
@@ -497,13 +527,31 @@ process runHaplotype {
         output_subdir = os.path.join(output_dir, subdir)
         os.makedirs(output_subdir, exist_ok=True)
 
+        # Identify the corrected read file
+        corrected_read_file = None
+        for filename in os.listdir(subdir_path):
+            if filename.endswith("_corrected.fastq"):
+                corrected_read_file = os.path.join(subdir_path, filename)
+                converted_file = os.path.join(subdir_path, "reads.corrected.tmp2.fa")
+                convert_cmd = f"seqtk seq -A {corrected_read_file} > {converted_file}"
+                subprocess.run(convert_cmd, shell=True, check=True)
+                corrected_read_file = converted_file
+                break
+            elif filename.endswith("_corrected.fasta"):
+                corrected_read_file = os.path.join(subdir_path, filename)
+                break
+
+        if corrected_read_file is None:
+            print(f"No corrected read file found in {subdir_path}. Skipping...")
+            continue
+
         # Define output file paths
         haplotype_file = os.path.join(output_subdir, f"{subdir}_contigs.fasta")
         final_haplotype_file = os.path.join(output_subdir, "haplotypes.final.fa")
 
         try:
             # Run the strainline command
-            command1 = f"/app/Strainline/src/strainline.sh -i {subdir_path}/reads.corrected.tmp2.fa -o {output_subdir} -p ont --maxLD ${maxLD_floats} --maxGD ${maxGD_floats} --rmMisassembly ${rmMisassembly_bool} --correctErr ${correctErr_bool} --minAbun ${minAbun_floats} -k ${topks} --minOvlpLen ${minovlplens} --minSeedLen ${minseedlens} --maxOH ${maxohs} --threads ${cpu}"
+            command1 = f"/app/Strainline/src/strainline.sh -i {corrected_read_file} -o {output_subdir} -p ont --maxLD ${maxLD_floats} --maxGD ${maxGD_floats} --rmMisassembly ${rmMisassembly_bool} --correctErr ${correctErr_bool} --minAbun ${minAbun_floats} -k ${topks} --minOvlpLen ${minovlplens} --minSeedLen ${minseedlens} --maxOH ${maxohs} --threads ${cpu}"
             subprocess.run(command1, shell=True, check=True)
 
             # Check if haplotypes.final.fa was created
@@ -823,23 +871,23 @@ process runMapping_2 {
 
     script:
     """
-        # Ensure the output directories exist
+    # Ensure the output directories exist
         mkdir -p mapped_reads/barcodex
 
-        # Run bwa index on the reference genome
-        bwa index "${ref_genome}" || { echo 'BWA index failed'; exit 1; }
+    # Align reads with Minimap2, then sort with Samtools
+        minimap2 -ax map-ont --eqx --MD --cs=long -t ${cpu} "${ref_genome}" ${chopped}/*.fastq | \
+        samtools sort -@ ${cpu} -o mapped_reads/barcodex/barcodex_align_sorted.bam || { echo 'Minimap2 or Samtools sort failed'; exit 1; }
 
-        # Align reads with bwa mem, then sort with samtools
-        bwa mem -t ${cpu} "${ref_genome}" ${chopped}/*.fastq | \
-        samtools sort -@ ${cpu} -o mapped_reads/barcodex/barcodex_align_sorted.bam || { echo 'BWA mem or Samtools sort failed'; exit 1; }
+    # Extract IDs of mapped reads (without sequence modification)
+        samtools view -F 4 mapped_reads/barcodex/barcodex_align_sorted.bam | cut -f1 | sort | uniq > mapped_reads/barcodex/mapped_read_ids.txt
 
-        # Convert BAM to FASTQ
-        samtools bam2fq mapped_reads/barcodex/barcodex_align_sorted.bam > mapped_reads/barcodex/barcodex_pre_mapped_reads.fastq || { echo 'Samtools BAM to FASTQ conversion failed'; exit 1; }
+    # Retrieve original reads using seqkit
+        seqkit grep -f mapped_reads/barcodex/mapped_read_ids.txt ${chopped}/*.fastq > mapped_reads/barcodex/barcodex_pre_mapped_reads.fastq || { echo 'Seqkit filtering failed'; exit 1; }
 
-        # Filter reads based on length using filtlong
+    # Filter reads based on length using Filtlong
         filtlong --min_length ${lowerlength} --max_length ${upperlength} mapped_reads/barcodex/barcodex_pre_mapped_reads.fastq > mapped_reads/barcodex/barcodex_mapped_reads.fastq || { echo 'Filtlong filtering failed'; exit 1; }
 
-        # Clean up intermediate files if needed
+    # Clean up intermediate files if needed
         rm mapped_reads/barcodex/barcodex_pre_mapped_reads.fastq
     """
 }
@@ -849,59 +897,47 @@ process runMapping_2 {
 * Run error_correction_rattle
 */
 
-
 process runErrcorrectRattle {
-    tag {"error_correction"}
-    label 'small_mem'
+    tag "error_correction"
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
-    path (mapped)
-    val (cpu)
-    val (repr_percentile)
-    val (score_threshold)
-    val (kmer_size)
+    path mapped
+    val cpu
+    val repr_percentile
+    val score_threshold
+    val kmer_size
 
     output:
-    path("error_correction"), emit: corrected
+    path "error_correction", emit: corrected
 
     script:
     """
-    #!/usr/bin/env python
+    mkdir -p error_correction
 
-    import os
-    import subprocess
+    for subdir in $mapped/*; do
+        if [[ -d "\$subdir" && "\$(basename \"\$subdir\")" == bar* ]]; then
+            subdir_name="\$(basename \"\$subdir\")"
+            output_subdir="error_correction/\${subdir_name}"
+            mkdir -p "\${output_subdir}"
 
-    mapped_dir = "${mapped}"
-    output_dir = os.path.join(os.path.dirname(mapped_dir), "error_correction")
-    os.makedirs(output_dir, exist_ok=True)
+            rattle cluster -i "\${subdir}/\${subdir_name}_mapped_reads.fastq" \\
+                -p $repr_percentile \\
+                -s $score_threshold \\
+                -t $cpu \\
+                --iso-kmer-size $kmer_size \\
+                -o "\${output_subdir}"
 
-    # Get the subdirectories in the mapped directory
-    subdirs = [d for d in os.listdir(mapped_dir) if os.path.isdir(os.path.join(mapped_dir, d))]
+            rattle correct -i "\${subdir}/\${subdir_name}_mapped_reads.fastq" \\
+                -c "\${output_subdir}/clusters.out" \\
+                -t $cpu \\
+                -o "\${output_subdir}"
 
-    for subdir in subdirs:
-        if not subdir.startswith("bar"):
-            continue
-
-        subdir_path = os.path.join(mapped_dir, subdir)
-        output_subdir = os.path.join(output_dir, subdir)
-        os.makedirs(output_subdir, exist_ok=True)
-
-        # Run the error correction 
-        command1 = f"/usr/bin/rattle cluster -i {subdir_path}/{subdir}_mapped_reads.fastq -p ${repr_percentile} -s ${score_threshold} -t ${cpu} --iso-kmer-size ${kmer_size} -o {output_subdir}"
-        subprocess.run(command1, shell=True, check=True)
-
-        command2 = f"/usr/bin/rattle correct -i {subdir_path}/{subdir}_mapped_reads.fastq -c {output_subdir}/clusters.out -t ${cpu} -o {output_subdir}"
-        subprocess.run(command2, shell=True, check=True)
-
-        # Move the corrected file
-        corrected_file = os.path.join(output_subdir, f"{subdir}_corrected.fastq")
-        os.makedirs(os.path.dirname(corrected_file), exist_ok=True)
-        command3 = f"mv {output_subdir}/corrected.fq {corrected_file}"
-        subprocess.run(command3, shell=True, check=True)
+            mv "\${output_subdir}/corrected.fq" "\${output_subdir}/\${subdir_name}_corrected.fastq"
+        fi
+    done
     """
 }
-
 
 
 /*
@@ -919,7 +955,7 @@ workflow {
         }
 
     if (params.demultiplexing == 'ON') {
-        runBarcoding(runChopper.out.choped, params.barcods, params.cpu, params.min_score_rear_barcode, params.min_score_front_barcode)
+        runBarcoding(runChopper.out.chopped, params.barcods, params.cpu, params.min_score_rear_barcode, params.min_score_front_barcode)
         runMapping(runBarcoding.out.demultiplexed, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
         
         // Run error correction based on selected tool
@@ -945,7 +981,7 @@ workflow {
     }
 
     else if (params.demultiplexing == 'OFF') {
-        runMapping_2(runChopper.out.choped, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
+        runMapping_2(runChopper.out.chopped, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
         
         // Run error correction based on selected tool
         if (params.error_correction_tool == 'vechat') {
@@ -955,7 +991,7 @@ workflow {
         }
 
         // Get the appropriate corrected reads channel
-        def corrected_reads = params.error_correction_tool == 'vechat' ? runErrcorrectVechat.out.corrected : runErrcorrectRattle.out.corrected_reads
+        def corrected_reads = params.error_correction_tool == 'vechat' ? runErrcorrectVechat.out.corrected : runErrcorrectRattle.out.corrected
     
         if (params.pipeline == 'assembly') {
             runAssembly(corrected_reads, params.genomesize, params.cpu)
