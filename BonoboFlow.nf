@@ -308,29 +308,29 @@ process runMapping {
 
     # Iterate over barcode directories
     for barcode_dir in ${demultiplexed}/*; do
-        if [[ ! -d "\$barcode_dir" ]]; then
+        if [[ ! -d "$barcode_dir" ]]; then
             continue
         fi
 
-        barcode_id=`basename "\$barcode_dir"`
-        output_subdir="mapped_reads/\${barcode_id}"
-        mkdir -p "\$output_subdir"
+        barcode_id=$(basename "$barcode_dir")
+        output_subdir="mapped_reads/${barcode_id}"
+        mkdir -p "$output_subdir"
 
         # Align reads with Minimap2, then sort with Samtools
-        minimap2 -ax map-ont --eqx --MD --cs=long -t ${cpu} "${ref_genome}" \${barcode_dir}/*.fastq | \
-        samtools sort -@ ${cpu} -o "\${output_subdir}/\${barcode_id}_align_sorted.bam" || { echo 'Minimap2 or Samtools sort failed'; exit 1; }
+        minimap2 -ax map-ont --eqx --MD --cs=long -t ${cpu} "${ref_genome}" ${barcode_dir}/*.fastq | \
+        samtools sort -@ ${cpu} -o "${output_subdir}/${barcode_id}_align_sorted.bam" || { echo 'Minimap2 or Samtools sort failed'; exit 1; }
 
         # Extract IDs of mapped reads (without sequence modification)
-        samtools view -F 4 "\${output_subdir}/\${barcode_id}_align_sorted.bam" | cut -f1 | sort | uniq > "\${output_subdir}/mapped_read_ids.txt"
+        samtools view -F 4 "${output_subdir}/${barcode_id}_align_sorted.bam" | cut -f1 | sort | uniq > "${output_subdir}/mapped_read_ids.txt"
 
         # Retrieve original reads using seqkit
-        seqkit grep -f "\${output_subdir}/mapped_read_ids.txt" \${barcode_dir}/*.fastq > "\${output_subdir}/\${barcode_id}_pre_mapped_reads.fastq" || { echo 'Seqkit filtering failed'; exit 1; }
+        seqkit grep -f "${output_subdir}/mapped_read_ids.txt" ${barcode_dir}/*.fastq > "${output_subdir}/${barcode_id}_pre_mapped_reads.fastq" || { echo 'SeqKit filtering failed'; exit 1; }
 
         # Filter reads based on length using Filtlong
-        filtlong --min_length ${lowerlength} --max_length ${upperlength} "\${output_subdir}/\${barcode_id}_pre_mapped_reads.fastq" > "\${output_subdir}/\${barcode_id}_mapped_reads.fastq" || { echo 'Filtlong filtering failed'; exit 1; }
+        filtlong --min_length ${lowerlength} --max_length ${upperlength} "${output_subdir}/${barcode_id}_pre_mapped_reads.fastq" > "${output_subdir}/${barcode_id}_mapped_reads.fastq" || { echo 'Filtlong filtering failed'; exit 1; }
 
         # Clean up intermediate files if needed
-        rm "\${output_subdir}/\${barcode_id}_pre_mapped_reads.fastq"
+        # rm "${output_subdir}/${barcode_id}_pre_mapped_reads.fastq"
     done
     """
 }
