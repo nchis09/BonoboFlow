@@ -1,176 +1,146 @@
-#  BonoboFlow
-[![](https://img.shields.io/badge/nextflow-22.10.4-yellowgreen)](https://www.nextflow.io)
+# BonoboFlow
+[![](https://img.shields.io/badge/nextflow-24.04.2-yellowgreen)](https://www.nextflow.io)
 [![](https://img.shields.io/badge/uses-docker-orange)](https://docs.docker.com/get-docker)
 [![](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-
 [![Twitter Follow](https://img.shields.io/twitter/follow/ndekezi09.svg?style=social)](https://twitter.com/ndekezi09) 
-
-
-## B O N O B O F L O W - P I P E L I N E
-
-
-The BonoboFlow pipeline is a dedicated tool developed for the precise execution of viral 
-        genome assembly and haplotypes construction from MinION sequencing reads
-
-                ------------------------------------------------------
-
-                      ------------------------------------------
-                
-                                --------------------
-                
-                                        -----
-                            
-                                          -
-
-                      =============================================
-                              BonoboFlow  ~  version 1.0
-                      ==============================================
-
 
 ## Introduction
 
-BonoboFlow is a nextflow pipeline for reproducible and precise execution of viral genome assembly and haplotypes construction 
+BonoboFlow is a Nextflow pipeline for reproducible and precise execution of viral genome assembly and haplotypes construction from MinION sequencing reads. The pipeline supports both raw FAST5/POD5 files and FASTQ inputs, with capabilities for basecalling, demultiplexing, error correction, assembly, and haplotype reconstruction.
 
+## Features
+
+- Basecalling from FAST5/POD5 files using Dorado
+- Demultiplexing with support for multiple barcoding kits
+- Read quality filtering and length selection
+- Error correction using either Rattle or Vechat
+- Genome assembly and haplotype reconstruction
+- GPU acceleration support for compatible processes
+- Comprehensive QC reporting
 
 ## Installation
 
-BonoboFlow requires:
- **nextflow** (version 24.04.2)
- docker or singularity
+### Prerequisites
+- Nextflow (version 24.04.2)
+- Docker or Singularity
+- Conda (recommended for environment management)
 
-
-We recommend to install the packages as follow
-
+### Quick Start
 ```bash
+# Clone the repository and create conda environment
 git clone https://github.com/nchis09/BonoboFlow.git && \
-conda create -n bonoboflow -c bioconda -c conda-forge openjdk=11 nextflow=24.04.2  python && \
+conda create -n bonoboflow -c bioconda -c conda-forge openjdk=11 nextflow=24.04.2 python && \
 conda activate bonoboflow
-```
 
-```bash
+# Test installation
 conda activate bonoboflow
 nextflow run BonoboFlow.nf --help
 ```
 
+## Container Support
+
+BonoboFlow automatically detects and uses either Docker or Singularity:
+- Docker: Runs with user permissions using `-u $(id -u):$(id -g)`
+- Singularity: Supports NVIDIA GPU acceleration with `--nv` option
+- Containers are pulled automatically for each process
+
 ## Usage
 
-The pipeline takes in the FAST5/POD5 or FASTQ file from Nanopore sequencing technology 
-
+### Basic Command Structure
 ```bash
-conda activate bonoboflow
-
-nextflow run BonoboFlow.nf -resume  --in_fastq <directory to input files> --outfile <directory to output files> --ref_genome <directory to reference genome> --sample_id <csv of sample IDs and barcode ID> -w <directory to save the work files>
-
-    
-
-Mandatory arguments:
-      --in_fastq                  Path to input fastq dirctory. Note: If you specify this you dont have to specify the  --raw_file
-      --raw_file                  Path to raw POD5 or FAST5 files. Note: If you specify this, make sure you change the --basecalling flag to ON
-      --outfile                   Path to output directory
-      --ref_genome                reference sequence
-      --sample_id                 a csv file containing barcode_Ids and sample Ids. An example csv file is provided in the BonoboFlow directory
-
-Other arguments:
-      --cpu                       cpus to used during the analyis. (default: 8)
-      --phred                     minimum sequence quality score (default: 12)
-      --lowerlength               set the lower length for input reads filter (default: 1000)
-      --upperlength               set the upper length for input reads filter (default: 20000)
-      --memory                    Memory allocated for each process. (default: 30 GB)
-      --pipeline                  Specify whether you want to do genome assembly or haplotype reconstruction. (default: haplotype)
-      --genomesize                Only required if you are running genome assembly (default: 5k)
-      --basecalling               Please specify whether you would like to carry out basecalling (default: OFF). If "ON" ensure to provide raw files
-
-Basecalling arguments:
-      --basecallers               specify the basecalling tool (default: basecaller the alternative: duplex)
-      --model                     Please specify the spped to run basecalling, the (default: sup the alternatives: fast, hac)
-
-Barcoding arguments:
-      --barcods                   barcods used during sequencing. (default: "EXP-NBD104 EXP-NBD114")
-      --min_score_rear_barcode    minimum quality of of rear barcode (default: 75)
-      --min_score_front_barcode   minimum quality of a rear barcode (default: 75)
-
-mapping argements:
-      --min_mq                    have mapping quality (default: 30)
-
-Error_correction with rattle arguments:
-      --repr_percentile           cluster representative percentile (default: 0.15)
-      --score_threshold           minimum score for two reads to be in the same gene cluster (default: 0.2)
-      --kmer_size                 k-mer size for isoform clustering (default: 11, maximum: 16)
-
-Error_correction with vechat arguments:
-      --split-size                split target sequences into chunks of desired size in lines (default: 5000)
-      --cudapoa_batches           number of batches for CUDA accelerated polishing (default: 0)
-      --cudaaligner-batches       number of batches for CUDA accelerated alignment (default: 0)
-      
-
-Haplotype arguments:
-      --maxLD_floats              Maximum local divergence allowed for merging haplotypes. (default: 0.05)
-      --maxGD_floats              Maximum global divergence allowed for merging haplotypes. (default: 0.05)
-      --rmMisassembly_bool        Break contigs at potential misassembled positions (default: False)
-      --correctErr_bool           Perform error correction for input reads (default: False)
-      --minAbun_floats            Minimum abundance for filtering haplotypes (default: 0.02)
-      --topks                     k seed reads size for haplotype construction (default: 100)
-      --minovlplens               Minimum read overlap length. (default: 1000)
-      --minseedlens               Minimum seed read length. (default: 2000)
-      --maxohs                    Maximum overhang length allowed for overlaps. (default: 20)
-
-
+nextflow run BonoboFlow.nf -resume \
+    --in_fastq <input_directory> \
+    --outfile <output_directory> \
+    --ref_genome <reference_genome> \
+    --sample_id <sample_csv_file> \
+    -w <work_directory>
 ```
 
-### Profiles
+### Input Parameters
 
-BonoboFlow can be run under different computing environments, simply choose an appropriate profile via the `-profile` argument. Could take only `-profile docker`
+#### Mandatory Arguments
+| Parameter | Description |
+|-----------|-------------|
+| `--in_fastq` | Path to input FASTQ directory (mutually exclusive with --raw_file) |
+| `--raw_file` | Path to raw POD5/FAST5 files (requires --basecalling ON) |
+| `--outfile` | Output directory path |
+| `--ref_genome` | Reference genome sequence |
+| `--sample_id` | CSV file with barcode and sample IDs |
 
+#### Optional Arguments
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--cpu` | 8 | Number of CPUs to use |
+| `--memory` | "30 GB" | Memory allocation per process |
+| `--pipeline` | "assembly" | Pipeline mode: "assembly" or "haplotype" |
+| `--phred` | 12 | Minimum sequence quality score |
+| `--lowerlength` | 1000 | Minimum read length |
+| `--upperlength` | 20000 | Maximum read length |
+| `--genomesize` | "5k" | Expected genome size (assembly mode only) |
 
-#### Pipeline 
+### Basecalling Configuration
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--basecalling` | "OFF" | Enable/disable basecalling |
+| `--basecallers` | "basecaller" | Tool choice: "basecaller" or "duplex" |
+| `--model` | "sup" | Model type: "sup", "fast", or "hac" |
 
+### Barcoding Options
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--barcods` | "EXP-NBD104 EXP-NBD114" | Barcoding kits used |
+| `--min_score_rear_barcode` | 75 | Minimum rear barcode quality |
+| `--min_score_front_barcode` | 75 | Minimum front barcode quality |
 
-**Output fiiles**
+### Error Correction Settings
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--error_correction_tool` | "vechat" | Choose between "vechat" or "rattle" |
+| `--repr_percentile` | 0.3 | Cluster representative percentile |
+| `--score_threshold` | 0.2 | Cluster similarity threshold |
+| `--kmer_size` | 12 | K-mer size for clustering |
 
-* `consensus*.fasta`: `FASTA` files of consensus sequences - one per sample
+### Haplotype Construction
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--maxLD_floats` | 0.01 | Maximum local divergence for merging haplotypes (lower value = more haplotypes) |
+| `--maxGD_floats` | 0.1 | Maximum global divergence for merging haplotypes (higher value = more divergent haplotypes) |
+| `--minAbun_floats` | 0.01 | Minimum abundance for filtering haplotypes (lower value = detect rarer haplotypes) |
+| `--topks` | 200 | Number of seed reads for haplotype construction (higher value = more seed reads) |
+| `--minovlplens` | 500 | Minimum read overlap length (lower value = more permissive overlaps) |
+| `--maxohs` | 30 | Maximum overhang length for overlaps (higher value = more permissive overlaps) |
+| `--rmMisassembly_bool` | True | Break contigs at potential misassembled positions |
+| `--correctErr_bool` | True | Perform error correction for input reads |
 
+> **Note**: These parameters are optimized for maximum haplotype detection. They are more permissive than the default Strainline settings to capture more potential haplotypes, including rare variants. Validate results carefully as these settings might increase false positives.
 
-**Pipeline information output**
+## Output Files
 
-* `Bonoboflow_DAG.html`: Graphical representation of the pipeline's processes/operators and channels between them.
+- `consensus*.fasta`: Consensus sequences per sample
+- `final_reports/`: Directory containing:
+  - `BonoboFlow_timeline.html`: Process execution timeline
+  - `BonoboFlow_report.html`: Detailed execution report
+  - `BonoboFlow_DAG.html`: Pipeline workflow visualization
 
+## GPU Support
 
-
-## input Parameters
-
-Mandatory parameters
-
-* `--in_fastq `:            Path to input fastq dirctory
-* `--sample_id`:           a csv file containing barcode_Ids and sample Ids
-* `--ref_genome`:           reference sequence
- 
-
-
-Optional parameters
-
-* `--barcods`:        barcods used during sequencing. The default barcoding kits are "EXP-NBD104 EXP-NBD114"
-* `--cpu`:                 cpus to used during the analyis. default is 8
-* `--lowerlength`:               set the lower length for input reads filter (default: 150)
-* `--upperlength`:             set the upper length for input reads filter (default: 100,000)
-
-
-### Output parameters
-
-Mandatory parameters
-
-* `--outfile`:          Path to output directory
-
+GPU acceleration is available for compatible processes (Dorado, Vechat) when enabled:
+- Set `params.gpu = "1"` for GPU support
+- Requires NVIDIA GPU and proper drivers
+- Automatically configures container GPU options
 
 ## Troubleshooting
 
-Kindly report any issues at https://github.com/nchis09/BonoboFlow/issues
+For issues and support:
+1. Check the execution reports in `final_reports/`
+2. Submit issues at https://github.com/nchis09/BonoboFlow/issues
+3. Include relevant error messages and configuration
 
 ## License
 
+This project is licensed under the GNU General Public License v3.0.
 
 ## Citation
 
-**This work is currently under peer review. A formal citation will be availed in due course.**
-
-# BonoboFlow
+**This work is currently under peer review. A formal citation will be provided upon publication.**

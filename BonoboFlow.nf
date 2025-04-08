@@ -4,7 +4,6 @@ params.version = 1.0
 
 def pipelineLogo() {
     log.info"""
-
 ========================================================================================
                         B O N O B O F L O W     - P I P E L I N E
 ========================================================================================
@@ -28,84 +27,76 @@ The BonoboFlow pipeline is a dedicated tool developed for the precise execution 
 """.stripIndent()
 }
 
-def helpMessage() {
-    log.info"""
-
-To run BonoboFlow, use the following command:
-
- \
-conda activate bonoboflow
-
-nextflow run BonoboFlow.nf -resume  --in_fastq <directory to input files> \
-                                    --outfile <directory to output files> \
-                                    --ref_genome <directory to reference genome> \
-                                    --sample_id <csv of sample IDs and barcode ID> \
-                                    -w <directory to save the work files>
-
-    
-
-Mandatory arguments:
-      --in_fastq                  Path to input fastq dirctory. Note: If you specify this you dont have to specify the  --raw_file
-      --raw_file                  Path to raw POD5 or FAST5 files. Note: If you specify this, make sure you change the --basecalling flag to ON
-      --outfile                   Path to output directory
-      --ref_genome                reference sequence
-      --sample_id                 a csv file containing barcode_Ids and sample Ids. An example csv file is provided in the BonoboFlow directory
-
-Other arguments:
-      --cpu                       cpus to used during the analyis. (default: 8)
-      --phred                     minimum sequence quality score (default: 12)
-      --lowerlength               set the lower length for input reads filter (default: 1000)
-      --upperlength               set the upper length for input reads filter (default: 20000)
-      --memory                    Memory allocated for each process. (default: 30 GB)
-      --pipeline                  Specify whether you want to do genome assembly or haplotype reconstruction. (default: haplotype)
-      --genomesize                Only required if you are running genome assembly (default: 5k)
-      --basecalling               Please specify whether you would like to carry out basecalling (default: OFF). If "ON" ensure to provide raw files
-
-Basecalling arguments:
-      --basecallers               specify the basecalling tool (default: basecaller the alternative: duplex)
-      --model                     Please specify the spped to run basecalling, the (default: sup the alternatives: fast, hac)
-
-Barcoding arguments:
-      --barcods                   barcods used during sequencing. (default: "EXP-NBD104 EXP-NBD114")
-      --min_score_rear_barcode    minimum quality of of rear barcode (default: 75)
-      --min_score_front_barcode   minimum quality of a rear barcode (default: 75)
-
-mapping argements:
-      --min_mq                    have mapping quality (default: 30)
-
-Error_correction with rattle arguments:
-      --repr_percentile           cluster representative percentile (default: 0.15)
-      --score_threshold           minimum score for two reads to be in the same gene cluster (default: 0.2)
-      --kmer_size                 k-mer size for isoform clustering (default: 11, maximum: 16)
-
-Error_correction with vechat arguments:
-      --split-size                split target sequences into chunks of desired size in lines (default: 5000)
-      --cudapoa_batches           number of batches for CUDA accelerated polishing (default: 0)
-      --cudaaligner-batches       number of batches for CUDA accelerated alignment (default: 0)
-      
-
-Haplotype arguments:
-      --maxLD_floats              Maximum local divergence allowed for merging haplotypes. (default: 0.05)
-      --maxGD_floats              Maximum global divergence allowed for merging haplotypes. (default: 0.05)
-      --rmMisassembly_bool        Break contigs at potential misassembled positions (default: False)
-      --correctErr_bool           Perform error correction for input reads (default: False)
-      --minAbun_floats            Minimum abundance for filtering haplotypes (default: 0.02)
-      --topks                     k seed reads size for haplotype construction (default: 100)
-      --minovlplens               Minimum read overlap length. (default: 1000)
-      --minseedlens               Minimum seed read length. (default: 2000)
-      --maxohs                    Maximum overhang length allowed for overlaps. (default: 20)
-
-
-""".stripIndent()
-}
-
 pipelineLogo()
 
 
 // Show help emssage
 params.help = false
 if (params.help){
-    helpMessage()
+    log.info"""
+BonoboFlow Pipeline v${params.version}
+=====================================
+
+The BonoboFlow pipeline is a dedicated tool for viral genome assembly and haplotype 
+construction from MinION sequencing reads.
+
+Usage:
+    nextflow run BonoboFlow.nf [options]
+
+Basic Command:
+    nextflow run BonoboFlow.nf -resume \\
+        --in_fastq <input_directory> \\
+        --outfile <output_directory> \\
+        --ref_genome <reference_genome> \\
+        --sample_id <sample_csv_file> \\
+        -w <work_directory>
+
+Mandatory Arguments:
+    --in_fastq                Path to input FASTQ directory (mutually exclusive with --raw_file)
+    --raw_file               Path to raw POD5/FAST5 files (requires --basecalling ON)
+    --outfile                Output directory path
+    --ref_genome             Reference genome sequence
+    --sample_id              CSV file with barcode and sample IDs
+
+Optional Arguments:
+    --cpu                    Number of CPUs to use (default: 8)
+    --memory                 Memory allocation per process (default: 30 GB)
+    --pipeline               Pipeline mode: "assembly" or "haplotype" (default: assembly)
+    --phred                  Minimum sequence quality score (default: 12)
+    --lowerlength           Minimum read length (default: 1000)
+    --upperlength           Maximum read length (default: 20000)
+    --genomesize            Expected genome size, assembly mode only (default: 5k)
+
+Basecalling:
+    --basecalling           Enable/disable basecalling (default: OFF)
+    --basecallers          Tool choice: "basecaller" or "duplex" (default: basecaller)
+    --model                 Model type: "sup", "fast", or "hac" (default: sup)
+
+Barcoding:
+    --barcods              Barcoding kits used (default: "EXP-NBD104 EXP-NBD114")
+    --min_score_rear_barcode   Minimum rear barcode quality (default: 75)
+    --min_score_front_barcode  Minimum front barcode quality (default: 75)
+
+Error Correction:
+    --error_correction_tool    Choose between "vechat" or "rattle" (default: vechat)
+    --repr_percentile         Cluster representative percentile (default: 0.3)
+    --score_threshold        Cluster similarity threshold (default: 0.2)
+    --kmer_size             K-mer size for clustering (default: 12)
+
+Haplotype Construction:
+    --maxLD_floats          Maximum local divergence (default: 0.05)
+    --maxGD_floats          Maximum global divergence (default: 0.05)
+    --minAbun_floats        Minimum haplotype abundance (default: 0.2)
+    --topks                 Seed reads size (default: 100)
+    --minovlplens          Minimum overlap length (default: 1000)
+    --maxohs               Maximum overhang length (default: 20)
+
+GPU Support:
+    --gpu                   Enable GPU acceleration (default: 0)
+                           Set to 1 for GPU support with compatible processes
+
+For more information and examples, visit: https://github.com/nchis09/BonoboFlow
+""".stripIndent()
     exit 0
 }
 
@@ -149,12 +140,12 @@ if (rawFile) {
 
 
 /*
-* Run dorado
+* Run dorado basecalling
 */
 
-process runDorado {
-
-    tag "raw_file"
+process runDoradobasecalling {
+    tag "basecall"
+    label 'dorado'
     publishDir params.outfile, mode: "copy", overwrite: false
     
     input:
@@ -164,8 +155,7 @@ process runDorado {
     val (model)
     
     output:
-    path(basecalled)                
-    path("basecalled"), emit: in_fastq
+    path "basecalled", emit: in_fastq
  
     script:
     """
@@ -175,8 +165,89 @@ process runDorado {
     mkdir -p basecalled
     
     # Run the dorado command
-        dorado "$basecallers" --emit-fastq "$model" "$raw_file" > "basecalled/basecalled.fastq"
+    dorado basecaller --device "cuda:all" --threads "${cpu}" "${model}" "${raw_file}" > "basecalled/basecalled.fastq"
+    """
+}
+
+/*
+* Run dorado demultiplexing
+*/
+
+process runDoradodemultiplexing {
+    tag "demux"
+    label 'dorado'
+    publishDir params.outfile, mode: "copy", overwrite: false
+    
+    input:
+    path (choped)
+    val (cpu)
+    val (barcods)
+    
+    output:
+    path(demultiplexed_dir), emit: demultiplexed               
+
+    script:
+    """
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Create the output directory
+    mkdir -p demultiplexed_dir
+
+    # Process both fastq and fq files
+    echo "Processing input files..."
+    
+    # Try processing fastq files
+    if ls "${choped}"/*.fastq 1> /dev/null 2>&1; then
+        echo "Found .fastq files, processing..."
+        dorado demux \\
+            --threads "${cpu}" \\
+            --emit-fastq \\
+            --barcode-both-ends \\
+            --kit-name "${barcods}" \\
+            --output-dir "demultiplexed_dir" \\
+            "${choped}"/*.fastq
+    fi
+
+    # Try processing fq files
+    if ls "${choped}"/*.fq 1> /dev/null 2>&1; then
+        echo "Found .fq files, processing..."
+        dorado demux \\
+            --threads "${cpu}" \\
+            --emit-fastq \\
+            --barcode-both-ends \\
+            --kit-name "${barcods}" \\
+            --output-dir "demultiplexed_dir" \\
+            "${choped}"/*.fq
+    fi
+
+    # Organize fastq files by barcode, skip unclassified reads
+    echo "Organizing demultiplexed files..."
+    shopt -s nullglob  # Handle case when no files match pattern
+    for fq in demultiplexed_dir/*.f*q; do
+        [[ -f "\${fq}" ]] || continue  # Skip if not a file
+        
+        # Skip unclassified reads
+        if [[ "\$(basename "\${fq}")" == *"unclassified"* ]]; then
+            echo "Skipping unclassified reads: \${fq}"
+            rm -f "\${fq}"
+            continue
+        fi
+
+        # Extract barcode from filename
+        barcode=\$(basename "\${fq}" | grep -o 'barcode[0-9]\\+' || echo "")
+        if [[ -z "\${barcode}" ]]; then
+            echo "Warning: Could not determine barcode for \${fq}"
+            continue
+        fi
+
+        # Create barcode directory and move file
+        mkdir -p "demultiplexed_dir/\${barcode}"
+        mv "\${fq}" "demultiplexed_dir/\${barcode}/"
+        echo "Moved \${fq} to demultiplexed_dir/\${barcode}/"
     done
+
+    echo "Demultiplexing completed successfully"
     """
 }
 
@@ -219,20 +290,19 @@ process runPowerchop {
 */
 
 process runChopper {
-
     tag "fastq"
     publishDir params.outfile, mode: "copy", overwrite: false
     label 'bonobo_img'
     
     input:
     path (in_fastq)
-    val (cpu)
-    val (upperlength)
     val (phred)
     val (lowerlength)
-    
+    val (upperlength)
+    val (cpu)
+
     output:
-    path choped_seq, emit: chopped
+    path "choped_seq", emit: choped
     
     script:
     """
@@ -241,18 +311,47 @@ process runChopper {
     # Create the output directory
     mkdir -p choped_seq
     
-    # Loop through input files and run Chopper
-    for file in \$(ls $in_fastq); do
-        sample_id=\$(basename "\$file")
+    # List all input files
+    echo "Input directory contents:"
+    ls -l "${in_fastq}"
+    
+    # Process all FASTQ files directly from the input directory
+    for file in ${in_fastq}/*.fastq ${in_fastq}/*.fq; do
+        # Check if file exists (to handle case when no .fq files exist)
+        [ -e "\$file" ] || continue
+        
+        # Get just the filename without path
+        filename=\$(basename "\$file")
+        
+        echo "Processing file: \$filename"
         
         # Run the Chopper command
-        chopper -q "$phred" -l "$lowerlength" --maxlength "$upperlength" --threads "$cpu" -i "$in_fastq/\$file" > "choped_seq/\$sample_id"
+        chopper -q "${phred}" -l "${lowerlength}" --maxlength "${upperlength}" --threads "${cpu}" -i "\$file" > "choped_seq/\$filename"
+        
+        # Check if chopper succeeded
+        if [ \$? -ne 0 ]; then
+            echo "Error: Chopper failed on file \$filename"
+            exit 1
+        fi
     done
+    
+    # Check if any files were processed
+    shopt -s nullglob
+    files=(choped_seq/*)
+    if [ \${#files[@]} -eq 0 ]; then
+        echo "No FASTQ files were processed in directory: ${in_fastq}"
+        echo "Directory contents:"
+        ls -la "${in_fastq}/"
+        exit 1
+    fi
+    
+    echo "Successfully processed files:"
+    ls -l choped_seq/
     """
 }
 
 /*
-* Run Barcoding
+* Run Barcoding with guppy
 */
 process runBarcoding {
     tag "barcodes"
@@ -336,7 +435,7 @@ process runMapping {
         if not fastq_files:
             print(f"No FASTQ files found in {barcode_dir}, skipping...")
             continue
-
+        
         align_bam = os.path.join(output_subdir, f"{barcode_id}_align_sorted.bam")
         mapped_ids_file = os.path.join(output_subdir, "mapped_read_ids.txt")
         pre_mapped_reads = os.path.join(output_subdir, f"{barcode_id}_pre_mapped_reads.fastq")
@@ -364,8 +463,6 @@ process runMapping {
 }
 
 
-
-
 /*
 * Run error_correction_vechat
 */
@@ -389,6 +486,7 @@ process runErrcorrectVechat {
 
     import os
     import subprocess
+    import glob
 
     mapped_dir = "${mapped}"
     output_dir = os.path.join(os.path.dirname(mapped_dir), "error_correction")
@@ -405,192 +503,19 @@ process runErrcorrectVechat {
         # Define the desired output file path
         corrected_output = os.path.join(output_subdir, f"{subdir}_corrected.fasta")
 
+        # Find the *_mapped_reads.fastq file
+        mapped_files = glob.glob(os.path.join(subdir_path, "*_mapped_reads.fastq"))
+        if not mapped_files:
+            print(f"No *_mapped_reads.fastq file found in {subdir_path}. Skipping...")
+            continue
+        
+        mapped_read_file = mapped_files[0]  # Use the first matching file
+
         # Run the error correction with direct output naming
-        command1 = f"vechat {subdir_path}/{subdir}_mapped_reads.fastq --threads ${cpu} --platform ont --cudapoa-batches ${gpu} --cudaaligner-batches ${gpu} --split --split-size 5000 -o {corrected_output}"
+        command1 = f"vechat {mapped_read_file} --threads ${cpu} --platform ont --cudapoa-batches ${gpu} --cudaaligner-batches ${gpu} --split --split-size 5000 -o {corrected_output}"
         subprocess.run(command1, shell=True, check=True)
     """
 }
-
-/*
-* Run genome_assembly
-*/
-
-process runAssembly {
-    tag {"genome_assembly"}
-    errorStrategy 'ignore'
-    label 'bonobo_img'
-    publishDir "${params.outfile}", mode: "copy", overwrite: false
-
-    input:
-    path (corrected)
-    val (genomesize)
-    val (cpu)
-
-    output:
-    path("assembly"), emit: draftgenome
-
-    script:
-    """
-    #!/usr/bin/env python
-
-    import os
-    import subprocess
-
-    genomesize = "${genomesize}"
-    corrected_dir = "${corrected}"
-    output_dir = os.path.join(os.path.dirname(corrected_dir), "assembly")
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Get the subdirectories in the corrected directory
-    subdirs = [d for d in os.listdir(corrected_dir) if os.path.isdir(os.path.join(corrected_dir, d))]
-
-    for subdir in subdirs:
-        if not subdir.startswith("bar"):
-            continue
-
-        subdir_path = os.path.join(corrected_dir, subdir)
-        output_subdir = os.path.join(output_dir, subdir)
-        os.makedirs(output_subdir, exist_ok=True)
-
-        # Identify the corrected read file
-        corrected_read_file = None
-        for filename in os.listdir(subdir_path):
-            if filename.endswith("_corrected.fastq"):
-                corrected_read_file = os.path.join(subdir_path, filename)
-                converted_file = os.path.join(subdir_path, "reads.corrected.tmp2.fa")
-                convert_cmd = f"seqtk seq -A {corrected_read_file} > {converted_file}"
-                subprocess.run(convert_cmd, shell=True, check=True)
-                corrected_read_file = converted_file
-                break
-            elif filename.endswith("_corrected.fasta"):
-                corrected_read_file = os.path.join(subdir_path, filename)
-                break
-
-        if corrected_read_file is None:
-            print(f"No corrected read file found in {subdir_path}. Skipping...")
-            continue
-
-        # Define output file paths
-        assembled_file = os.path.join(output_subdir, f"{subdir}_contigs.fasta")
-        final_assembly_file = os.path.join(output_subdir, "assembly.fasta")
-
-        try:
-            # Run the assembly
-            command1 = f"flye --genome-size {genomesize} --threads {cpu} --nano-raw {corrected_read_file} --no-alt-contigs --scaffold --trestle --out-dir {output_subdir}"
-            subprocess.run(command1, shell=True, check=True)
-
-            # Check if assembly.fasta was created
-            if os.path.exists(final_assembly_file):
-                # If the file exists, move it
-                command2 = f"mv {final_assembly_file} {assembled_file}"
-                subprocess.run(command2, shell=True, check=True)
-            else:
-                # If the file does not exist, create a zero-byte file
-                with open(assembled_file, 'w') as f:
-                    pass
-
-        except subprocess.CalledProcessError as e:
-            print(f"Error occurred for {subdir}: {e}")
-            # Create a zero-byte file in case of failure
-            with open(assembled_file, 'w') as f:
-                pass
-    """
-}
-
-
-/*
-* Run haplotype
-*/
-process runHaplotype {
-    tag {"genome_haplotype"}
-    errorStrategy 'ignore'
-    label 'bonobo_img'
-    publishDir "${params.outfile}", mode: "copy", overwrite: false
-
-    input:
-    path (corrected)
-    val (cpu)
-    val (maxLD_floats)
-    val (rmMisassembly_bool)
-    val (correctErr_bool)
-    val (minAbun_floats)
-    val (maxGD_floats)
-    val (topks)
-    val (minovlplens)
-    val (minseedlens)
-    val (maxohs)
-
-    output:
-    path("haplotype"), emit: draftgenome
-
-    script:
-    """
-    #!/usr/bin/env python
-
-    import os
-    import subprocess
-
-    corrected_dir = "${corrected}"
-    output_dir = os.path.join(os.path.dirname(corrected_dir), "haplotype")
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Get the subdirectories in the corrected directory
-    subdirs = [d for d in os.listdir(corrected_dir) if os.path.isdir(os.path.join(corrected_dir, d))]
-
-    for subdir in subdirs:
-        if not subdir.startswith("bar"):
-            continue
-
-        subdir_path = os.path.join(corrected_dir, subdir)
-        output_subdir = os.path.join(output_dir, subdir)
-        os.makedirs(output_subdir, exist_ok=True)
-
-        # Identify the corrected read file
-        corrected_read_file = None
-        for filename in os.listdir(subdir_path):
-            if filename.endswith("_corrected.fastq"):
-                corrected_read_file = os.path.join(subdir_path, filename)
-                converted_file = os.path.join(subdir_path, "reads.corrected.tmp2.fa")
-                convert_cmd = f"seqtk seq -A {corrected_read_file} > {converted_file}"
-                subprocess.run(convert_cmd, shell=True, check=True)
-                corrected_read_file = converted_file
-                break
-            elif filename.endswith("_corrected.fasta"):
-                corrected_read_file = os.path.join(subdir_path, filename)
-                break
-
-        if corrected_read_file is None:
-            print(f"No corrected read file found in {subdir_path}. Skipping...")
-            continue
-
-        # Define output file paths
-        haplotype_file = os.path.join(output_subdir, f"{subdir}_contigs.fasta")
-        final_haplotype_file = os.path.join(output_subdir, "haplotypes.final.fa")
-
-        try:
-            # Run the strainline command
-            command1 = f"/app/Strainline/src/strainline.sh -i {corrected_read_file} -o {output_subdir} -p ont --maxLD ${maxLD_floats} --maxGD ${maxGD_floats} --rmMisassembly ${rmMisassembly_bool} --correctErr ${correctErr_bool} --minAbun ${minAbun_floats} -k ${topks} --minOvlpLen ${minovlplens} --minSeedLen ${minseedlens} --maxOH ${maxohs} --threads ${cpu}"
-            subprocess.run(command1, shell=True, check=True)
-
-            # Check if haplotypes.final.fa was created
-            if os.path.exists(final_haplotype_file):
-                # If the file exists, move it
-                command2 = f"mv {final_haplotype_file} {haplotype_file}"
-                subprocess.run(command2, shell=True, check=True)
-            else:
-                # If the file does not exist, create a zero-byte file
-                with open(haplotype_file, 'w') as f:
-                    pass
-
-        except subprocess.CalledProcessError as e:
-            print(f"Error occurred for {subdir}: {e}")
-            # Create a zero-byte file in case of failure
-            with open(haplotype_file, 'w') as f:
-                pass
-
-    """
-}
-
 
 /*
 * Run polishing_medaka
@@ -959,22 +884,237 @@ process runErrcorrectRattle {
 
 
 /*
+* Run genome_assembly
+*/
+
+process runAssembly {
+
+    tag { "genome_assembly" }
+    errorStrategy 'ignore'
+    label 'bonobo_img'
+    publishDir "${params.outfile ?: 'results'}", mode: "copy", overwrite: false
+
+    input:
+    path corrected
+    val cpu 
+    val genomesize 
+
+    output:
+    path("${params.output_dir ?: 'assembly'}"), emit: draftgenome
+
+    script:
+    """
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    output_dir="${params.output_dir ?: 'assembly'}"
+    mkdir -p "\${output_dir}"
+
+    echo "Processing directory: ${corrected}"
+    echo "Output directory: \${output_dir}"
+
+    run_command() {
+        local cmd="\$1"
+        local desc="\$2"
+        echo "Running: \${desc:-\$cmd}"
+        if eval "\${cmd}"; then
+            echo "Command succeeded."
+        else
+            echo "Error running: \${desc:-\$cmd}" >&2
+            return 1
+        fi
+    }
+
+    for subdir in "${corrected}"/bar*/; do
+        [[ -d "\$subdir" ]] || continue
+
+        barcode_name=\$(basename "\${subdir}")
+        echo -e "\\nProcessing barcode: \${barcode_name}"
+
+        corrected_read_file=\$(find "\${subdir}" -maxdepth 1 -name "*_corrected.fastq" | head -n 1)
+
+        if [[ -z "\${corrected_read_file}" ]]; then
+            echo "No corrected reads found in \${barcode_name}, skipping..."
+            continue
+        fi
+
+        echo "Found corrected reads: \${corrected_read_file}"
+
+        output_subdir="\${output_dir}/\${barcode_name}"
+        mkdir -p "\${output_subdir}"
+
+        fasta_file="\${output_subdir}/\${barcode_name}_corrected.fasta"
+        if ! run_command "seqtk seq -A \${corrected_read_file} > \${fasta_file}" "Converting FASTQ to FASTA"; then
+            echo "FASTQ to FASTA conversion failed for \${barcode_name}, skipping..."
+            continue
+        fi
+
+        flye_cmd="flye --genome-size ${genomesize} \\
+            --threads ${cpu} \\
+            --nano-corr \${corrected_read_file} \\
+            --no-alt-contigs \\
+            --scaffold \\
+            --trestle \\
+            --out-dir \${output_subdir}"
+
+        if run_command "\${flye_cmd}" "Running Flye"; then
+            final_file="\${output_subdir}/assembly.fasta"
+            output_file="\${output_subdir}/\${barcode_name}_contigs.fasta"
+            if [[ -f "\${final_file}" ]]; then
+                echo "Moving output to: \${output_file}"
+                mv "\${final_file}" "\${output_file}"
+            else
+                echo "Warning: Flye output not found at \${final_file}"
+                touch "\${output_file}"
+            fi
+        else
+            echo "Flye failed for \${barcode_name}, creating empty output"
+            touch "\${output_subdir}/\${barcode_name}_contigs.fasta"
+        fi
+    done
+
+    echo -e "\\nGenome assembly process completed"
+
+    """
+}
+
+
+/*
+* Run haplotype
+*/
+
+process runHaplotype {
+    tag { "genome_haplotype" }
+    errorStrategy 'ignore'
+    label 'bonobo_img'
+    publishDir "${params.outfile}", mode: 'copy', overwrite: false
+
+    input:
+    path corrected
+    val cpu
+    val maxLD_floats
+    val rmMisassembly_bool
+    val correctErr_bool
+    val minAbun_floats
+    val maxGD_floats
+    val topks
+    val minovlplens
+    val minseedlens
+    val maxohs
+
+    output:
+    path("haplotype"), emit: draftgenome
+
+    script:
+    """
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Create output directory
+    output_dir="haplotype"  # Changed to match output specification
+    mkdir -p "\${output_dir}"
+
+    echo "Processing directory: ${corrected}"
+    echo "Output directory: \${output_dir}"
+
+    # Helper function for command execution
+    run_command() {
+        local cmd="\$1"
+        local desc="\$2"
+        echo "Running: \${desc:-\$cmd}"
+        if eval "\${cmd}"; then
+            echo "Command succeeded."
+        else
+            echo "Error running: \${desc:-\$cmd}" >&2
+            return 1
+        fi
+    }
+
+    # Process each barcode directory
+    for subdir in "${corrected}"/bar*/; do
+        [[ -d "\$subdir" ]] || continue
+
+        barcode_name=\$(basename "\${subdir}")
+        echo -e "\\nProcessing barcode: \${barcode_name}"
+
+        # Find corrected reads
+        corrected_read_file=\$(find "\${subdir}" -maxdepth 1 -name "*_corrected.fastq" | head -n 1)
+
+        if [[ -z "\${corrected_read_file}" ]]; then
+            echo "No corrected reads found in \${barcode_name}, skipping..."
+            continue
+        fi
+
+        echo "Found corrected reads: \${corrected_read_file}"
+
+        # Create barcode output directory
+        output_subdir="\${output_dir}/\${barcode_name}"
+        mkdir -p "\${output_subdir}"
+
+        # Convert FASTQ to FASTA
+        fasta_file="\${output_subdir}/\${barcode_name}_corrected.fasta"
+        if ! run_command "seqtk seq -A \${corrected_read_file} > \${fasta_file}" "Converting FASTQ to FASTA"; then
+            echo "FASTQ to FASTA conversion failed for \${barcode_name}, skipping..."
+            continue
+        fi
+
+        # Run Strainline
+        strainline_cmd="/app/Strainline/src/strainline.sh \\
+            -i \${fasta_file} \\
+            -o \${output_subdir} \\
+            -p ont \\
+            --maxLD ${maxLD_floats} \\
+            --maxGD ${maxGD_floats} \\
+            --rmMisassembly ${rmMisassembly_bool} \\
+            --correctErr ${correctErr_bool} \\
+            --minAbun ${minAbun_floats} \\
+            -k ${topks} \\
+            --minOvlpLen ${minovlplens} \\
+            --minSeedLen ${minseedlens} \\
+            --maxOH ${maxohs} \\
+            --threads ${cpu}"
+
+        echo -e "\\nStrainline command:"
+        echo "\${strainline_cmd}"
+
+        if run_command "\${strainline_cmd}" "Running Strainline"; then
+            final_file="\${output_subdir}/haplotypes.final.fa"
+            output_file="\${output_subdir}/\${barcode_name}_contigs.fasta"
+            if [[ -f "\${final_file}" ]]; then
+                echo "Moving output to: \${output_file}"
+                mv "\${final_file}" "\${output_file}"
+            else
+                echo "Warning: Strainline output not found at \${final_file}"
+                touch "\${output_file}"
+            fi
+        else
+            echo "Strainline failed for \${barcode_name}, creating empty output"
+            touch "\${output_subdir}/\${barcode_name}_contigs.fasta"
+        fi
+    done
+
+    echo -e "\\nHaplotype process completed"
+    """
+}
+
+
+/*
 * Workflow
 */
 
 workflow {
     if (params.basecalling == 'OFF') {
-        runChopper(params.in_fastq, params.cpu, params.upperlength, params.phred, params.lowerlength)
+        runChopper(params.in_fastq, params.phred, params.lowerlength, params.upperlength, params.cpu)
     }
 
     else if (params.basecalling == 'ON') {
-        runDorado(params.raw_file, params.cpu, params.basecallers, params.model)
-        runChopper(runDorado.out.in_fastq, params.cpu, params.upperlength, params.phred, params.lowerlength)
+        runDoradobasecalling(params.raw_file, params.cpu, params.basecallers, params.model)
+        runChopper(runDoradobasecalling.out.in_fastq, params.phred, params.lowerlength, params.upperlength, params.cpu)
         }
 
     if (params.demultiplexing == 'ON') {
-        runBarcoding(runChopper.out.chopped, params.barcods, params.cpu, params.min_score_rear_barcode, params.min_score_front_barcode)
-        runMapping(runBarcoding.out.demultiplexed, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
+        runDoradodemultiplexing(runChopper.out.choped, params.cpu, params.barcods)
+        runMapping(runDoradodemultiplexing.out.demultiplexed, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
         
         // Run error correction based on selected tool
         if (params.error_correction_tool == 'vechat') {
@@ -987,7 +1127,7 @@ workflow {
         def corrected_reads = params.error_correction_tool == 'vechat' ? runErrcorrectVechat.out.corrected : runErrcorrectRattle.out.corrected
  
         if (params.pipeline == 'assembly') {
-            runAssembly(corrected_reads, params.genomesize, params.cpu)
+            runAssembly(corrected_reads, params.cpu, params.genomesize)
             runPolish_medaka(runAssembly.out.draftgenome, runMapping.out.mapped, params.cpu)
         }
 
@@ -999,7 +1139,7 @@ workflow {
     }
 
     else if (params.demultiplexing == 'OFF') {
-        runMapping_2(runChopper.out.chopped, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
+        runMapping_2(runChopper.out.choped, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
         
         // Run error correction based on selected tool
         if (params.error_correction_tool == 'vechat') {
@@ -1012,7 +1152,7 @@ workflow {
         def corrected_reads = params.error_correction_tool == 'vechat' ? runErrcorrectVechat.out.corrected : runErrcorrectRattle.out.corrected
     
         if (params.pipeline == 'assembly') {
-            runAssembly(corrected_reads, params.genomesize, params.cpu)
+            runAssembly(corrected_reads, params.cpu, params.genomesize)
             runPolish_medaka(runAssembly.out.draftgenome, runMapping_2.out.mapped, params.cpu)
         }
 
