@@ -89,6 +89,7 @@ Haplotype Construction:
     --minAbun_floats        Minimum haplotype abundance (default: 0.2)
     --topks                 Seed reads size (default: 100)
     --minovlplens          Minimum overlap length (default: 1000)
+    --minseedlens          Minimum seed length (default: 1000)
     --maxohs               Maximum overhang length (default: 20)
 
 GPU Support:
@@ -982,118 +983,95 @@ process runAssembly {
 /*
 * Run haplotype
 */
-
 process runHaplotype {
+
     tag { "genome_haplotype" }
-    errorStrategy 'ignore'
     label 'bonobo_img'
+    errorStrategy 'ignore'
+
     publishDir "${params.outfile}", mode: 'copy', overwrite: false
 
     input:
     path corrected
-    val cpu
     val maxLD_floats
-    val rmMisassembly_bool
-    val correctErr_bool
-    val minAbun_floats
     val maxGD_floats
+    val rmMisassembly_bool
+    val minAbun_floats
     val topks
     val minovlplens
     val minseedlens
     val maxohs
+    val cpu
 
     output:
-    path("haplotype"), emit: draftgenome
+    path "haplotype", emit: draftgenome
 
     script:
     """
-    #!/usr/bin/env bash
-    set -euo pipefail
+    mkdir -p haplotype
 
-    # Create output directory
-    output_dir="haplotype"  # Changed to match output specification
-    mkdir -p "\${output_dir}"
-
-    echo "Processing directory: ${corrected}"
-    echo "Output directory: \${output_dir}"
-
-    # Helper function for command execution
-    run_command() {
-        local cmd="\$1"
-        local desc="\$2"
-        echo "Running: \${desc:-\$cmd}"
-        if eval "\${cmd}"; then
-            echo "Command succeeded."
-        else
-            echo "Error running: \${desc:-\$cmd}" >&2
-            return 1
-        fi
-    }
-
-    # Process each barcode directory
-    for subdir in "${corrected}"/bar*/; do
-        [[ -d "\$subdir" ]] || continue
-
-        barcode_name=\$(basename "\${subdir}")
-        echo -e "\\nProcessing barcode: \${barcode_name}"
-
-        # Find corrected reads
-        corrected_read_file=\$(find "\${subdir}" -maxdepth 1 -name "*_corrected.fastq" | head -n 1)
-
-        if [[ -z "\${corrected_read_file}" ]]; then
-            echo "No corrected reads found in \${barcode_name}, skipping..."
+    for subdir in "${corrected}"/*; do
+        if [[ ! -d "\$subdir" || \$(basename "\$subdir") != bar* ]]; then
             continue
         fi
 
-        echo "Found corrected reads: \${corrected_read_file}"
+        subname=\$(basename "\$subdir")
+        haplo_out="haplotype/\$subname"
+        mkdir -p "\$haplo_out"
 
-        # Create barcode output directory
-        output_subdir="\${output_dir}/\${barcode_name}"
-        mkdir -p "\${output_subdir}"
+        corrected_read=""
+        for file in "\$subdir"/*; do
+            if [[ "\$file" == *_corrected.fastq ]]; then
+                fasta_out="\$subdir/\${subname}_corrected.fasta"
+                if command -v seqtk >/dev/null 2>&1; then
+                    seqtk seq -A "\$file" > "\$fasta_out"
+                    corrected_read="\$fasta_out"
+                else
+                    echo "seqtk not found. Cannot convert fastq to fasta. Skipping \$subdir..." >&2
+                    continue 2
+                fi
+                break
+            elif [[ "\$file" == *_corrected.fasta ]]; then
+                corrected_read="\$file"
+                break
+            fi
+        done
 
-        # Convert FASTQ to FASTA
-        fasta_file="\${output_subdir}/\${barcode_name}_corrected.fasta"
-        if ! run_command "seqtk seq -A \${corrected_read_file} > \${fasta_file}" "Converting FASTQ to FASTA"; then
-            echo "FASTQ to FASTA conversion failed for \${barcode_name}, skipping..."
+        if [[ -z "\$corrected_read" ]]; then
+            echo "No corrected read file found in \$subdir. Skipping..." >&2
             continue
         fi
 
-        # Run Strainline
-        strainline_cmd="/app/Strainline/src/strainline.sh \\
-            -i \${fasta_file} \\
-            -o \${output_subdir} \\
+        if ! timeout 1h /app/Strainline/src/strainline.sh \\
+            -i "\$corrected_read" \\
             -p ont \\
             --maxLD ${maxLD_floats} \\
             --maxGD ${maxGD_floats} \\
             --rmMisassembly ${rmMisassembly_bool} \\
-            --correctErr ${correctErr_bool} \\
+            --correctErr True \\
             --minAbun ${minAbun_floats} \\
             -k ${topks} \\
             --minOvlpLen ${minovlplens} \\
             --minSeedLen ${minseedlens} \\
             --maxOH ${maxohs} \\
-            --threads ${cpu}"
-
-        echo -e "\\nStrainline command:"
-        echo "\${strainline_cmd}"
-
-        if run_command "\${strainline_cmd}" "Running Strainline"; then
-            final_file="\${output_subdir}/haplotypes.final.fa"
-            output_file="\${output_subdir}/\${barcode_name}_contigs.fasta"
-            if [[ -f "\${final_file}" ]]; then
-                echo "Moving output to: \${output_file}"
-                mv "\${final_file}" "\${output_file}"
+            --threads ${cpu} \\
+            -o "\$haplo_out" 2>&1; then
+            status=\$?
+            if [ \$status -eq 124 ]; then
+                echo "Strainline timed out after 1 hour for \$subname" >&2
             else
-                echo "Warning: Strainline output not found at \${final_file}"
-                touch "\${output_file}"
+                echo "Strainline failed with status \$status for \$subname" >&2
             fi
+            continue
+        fi
+
+        if [[ -f "\$haplo_out/haplotypes.final.fa" ]]; then
+            mv "\$haplo_out/haplotypes.final.fa" "\$haplo_out/\${subname}_contigs.fasta"
         else
-            echo "Strainline failed for \${barcode_name}, creating empty output"
-            touch "\${output_subdir}/\${barcode_name}_contigs.fasta"
+            echo "No haplotype output for \$subname. Creating empty contigs file." >&2
+            touch "\$haplo_out/\${subname}_contigs.fasta"
         fi
     done
-
-    echo -e "\\nHaplotype process completed"
     """
 }
 
@@ -1132,7 +1110,7 @@ workflow {
         }
 
          else if (params.pipeline == 'haplotype') {
-            runHaplotype(corrected_reads, params.cpu, params.maxLD_floats, params.rmMisassembly_bool, params.correctErr_bool, params.minAbun_floats, params.maxGD_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs)
+            runHaplotype(corrected_reads, params.maxLD_floats, params.maxGD_floats, params.rmMisassembly_bool, params.minAbun_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs, params.cpu)
             runPolish_medaka(runHaplotype.out.draftgenome, runMapping.out.mapped, params.cpu)
         }
         runPolish_pilon(runPolish_medaka.out.medaka, runMapping.out.mapped, params.min_mq, params.cpu)
@@ -1157,7 +1135,7 @@ workflow {
         }
 
         else if (params.pipeline == 'haplotype') {
-            runHaplotype(corrected_reads, params.cpu, params.maxLD_floats, params.rmMisassembly_bool, params.correctErr_bool, params.minAbun_floats, params.maxGD_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs)
+            runHaplotype(corrected_reads, params.maxLD_floats, params.maxGD_floats, params.rmMisassembly_bool, params.minAbun_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs, params.cpu)
             runPolish_medaka(runHaplotype.out.draftgenome, runMapping_2.out.mapped, params.cpu)
         }
         runPolish_pilon(runPolish_medaka.out.medaka, runMapping_2.out.mapped, params.min_mq, params.cpu)
