@@ -488,6 +488,7 @@ process runErrcorrectVechat {
     import os
     import subprocess
     import glob
+    import shutil
 
     mapped_dir = "${mapped}"
     output_dir = os.path.join(os.path.dirname(mapped_dir), "error_correction")
@@ -501,9 +502,6 @@ process runErrcorrectVechat {
         output_subdir = os.path.join(output_dir, subdir)
         os.makedirs(output_subdir, exist_ok=True)
 
-        # Define the desired output file path
-        corrected_output = os.path.join(output_subdir, f"{subdir}_corrected.fasta")
-
         # Find the *_mapped_reads.fastq file
         mapped_files = glob.glob(os.path.join(subdir_path, "*_mapped_reads.fastq"))
         if not mapped_files:
@@ -513,8 +511,17 @@ process runErrcorrectVechat {
         mapped_read_file = mapped_files[0]  # Use the first matching file
 
         # Run the error correction with direct output naming
-        command1 = f"vechat {mapped_read_file} --threads ${cpu} --platform ont --cudapoa-batches ${gpu} --cudaaligner-batches ${gpu} --split --split-size 5000 -o {corrected_output}"
+        command1 = f"vechat {mapped_read_file} --threads ${cpu} --platform ont --cudapoa-batches ${gpu} --cudaaligner-batches ${gpu} --split --split-size 1000 -o {output_subdir}"
         subprocess.run(command1, shell=True, check=True)
+
+        # Move and rename the corrected output file
+        tmp_file = os.path.join(output_subdir, "reads.corrected.tmp2.fa")
+        if os.path.exists(tmp_file):
+            final_file = os.path.join(output_subdir, f"{subdir}_corrected.fastq")
+            shutil.move(tmp_file, final_file)
+            print(f"Moved corrected reads to {final_file}")
+        else:
+            print(f"Warning: Expected output file {tmp_file} not found")
     """
 }
 

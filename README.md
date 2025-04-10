@@ -18,6 +18,9 @@ BonoboFlow is a Nextflow pipeline for reproducible and precise execution of vira
 - Genome assembly and haplotype reconstruction
 - GPU acceleration support for compatible processes
 - Comprehensive QC reporting
+- Automatic container detection and configuration (Docker/Singularity)
+- Flexible resource allocation for different computational requirements
+- DAG visualization for workflow monitoring
 
 ## Installation
 
@@ -25,6 +28,7 @@ BonoboFlow is a Nextflow pipeline for reproducible and precise execution of vira
 - Nextflow (version 24.04.2)
 - Docker or Singularity
 - Conda (recommended for environment management)
+- NVIDIA GPU (optional, for accelerated processing)
 
 ### Quick Start
 ```bash
@@ -44,6 +48,22 @@ BonoboFlow automatically detects and uses either Docker or Singularity:
 - Docker: Runs with user permissions using `-u $(id -u):$(id -g)`
 - Singularity: Supports NVIDIA GPU acceleration with `--nv` option
 - Containers are pulled automatically for each process
+- Default container images:
+  - Main pipeline: `nchis09/bonobo_image:v1`
+  - Basecalling: `nanoporetech/dorado:latest`
+  - Barcoding: `nanozoo/guppy_cpu:5.0.7-1`
+
+## Resource Configuration
+
+### Default Settings
+- CPU cores: 50
+- Memory: 50 GB
+- GPU support: Optional (controlled via `--gpu` parameter)
+
+### Process-Specific Resources
+- Main pipeline processes: Up to 300 GB memory with automatic retry on memory errors
+- Basecalling and demultiplexing: Configurable based on input parameters
+- All processes support GPU acceleration when available
 
 ## Usage
 
@@ -79,21 +99,37 @@ nextflow run BonoboFlow.nf -resume \
 | `--upperlength` | 20000 | Maximum read length |
 | `--genomesize` | "5k" | Expected genome size (assembly mode only) |
 
-### Basecalling Configuration
+#### Performance Tuning
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--cpu` | 50 | Number of CPUs to use |
+| `--memory` | "50 GB" | Memory allocation per process |
+| `--gpu` | 0 | Enable GPU acceleration (0/1) |
+| `--split_size` | 10000 | Split size for parallel processing |
+
+#### Quality Control
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--phred` | 6 | Minimum sequence quality score |
+| `--lowerlength` | 1000 | Minimum read length |
+| `--upperlength` | 200000 | Maximum read length |
+| `--min_mq` | 20 | Minimum mapping quality |
+
+#### Basecalling Configuration
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `--basecalling` | "OFF" | Enable/disable basecalling |
 | `--basecallers` | "basecaller" | Tool choice: "basecaller" or "duplex" |
 | `--model` | "sup" | Model type: "sup", "fast", or "hac" |
 
-### Barcoding Options
+#### Barcoding Options
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `--barcods` | "EXP-NBD104 EXP-NBD114" | Barcoding kits used |
 | `--min_score_rear_barcode` | 75 | Minimum rear barcode quality |
 | `--min_score_front_barcode` | 75 | Minimum front barcode quality |
 
-### Error Correction Settings
+#### Error Correction Settings
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `--error_correction_tool` | "vechat" | Choose between "vechat" or "rattle" |
@@ -101,17 +137,19 @@ nextflow run BonoboFlow.nf -resume \
 | `--score_threshold` | 0.2 | Cluster similarity threshold |
 | `--kmer_size` | 12 | K-mer size for clustering |
 
-### Haplotype Construction
+#### Haplotype Construction
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `--maxLD_floats` | 0.01 | Maximum local divergence for merging haplotypes (lower value = more haplotypes) |
-| `--maxGD_floats` | 0.1 | Maximum global divergence for merging haplotypes (higher value = more divergent haplotypes) |
-| `--minAbun_floats` | 0.01 | Minimum abundance for filtering haplotypes (lower value = detect rarer haplotypes) |
+| `--maxLD_floats` | 0.001 | Maximum local divergence |
+| `--maxGD_floats` | 0.01 | Maximum global divergence |
+| `--minAbun_floats` | 0.02 | Minimum abundance threshold |
+| `--rmMisassembly_bool` | True | Remove misassemblies |
+| `--correctErr` | False | Error correction for input reads |
 | `--topks` | 200 | Number of seed reads for haplotype construction (higher value = more seed reads) |
 | `--minovlplens` | 500 | Minimum read overlap length (lower value = more permissive overlaps) |
 | `--maxohs` | 30 | Maximum overhang length for overlaps (higher value = more permissive overlaps) |
-| `--rmMisassembly_bool` | True | Break contigs at potential misassembled positions |
-| `--correctErr_bool` | True | Perform error correction for input reads |
+
+> **Note**: Error correction is now disabled by default in the latest version to improve processing speed. Enable it with `--correctErr True` if needed for your specific use case.
 
 > **Note**: These parameters are optimized for maximum haplotype detection. They are more permissive than the default Strainline settings to capture more potential haplotypes, including rare variants. Validate results carefully as these settings might increase false positives.
 
