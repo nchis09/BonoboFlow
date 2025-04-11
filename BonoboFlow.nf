@@ -400,69 +400,62 @@ process runMapping {
 
     script:
     """
-    #!/usr/bin/env python
-
-    import os
-    import subprocess
-    import glob
-
-    # Define input variables
-    demultiplexed_path = "${demultiplexed}"
-    ref_genome = "${ref_genome}"
-    lower_length = ${lowerlength}
-    upper_length = ${upperlength}
-    cpu = ${cpu}
+    #!/usr/bin/env bash
+    set -e
 
     # Create output directory
-    output_dir = os.path.join(os.getcwd(), "mapped_reads")
-    os.makedirs(output_dir, exist_ok=True)
+    mkdir -p mapped_reads
 
-    # Copy reference genome to output directory
-    ref_copy_path = os.path.join(output_dir, os.path.basename(ref_genome))
-    subprocess.run(["cp", ref_genome, ref_copy_path], check=True)
+    # Copy reference genome to working directory
+    cp "${ref_genome}" ./reference.fasta
 
-    # Get all barcode directories
-    barcode_dirs = [d for d in os.listdir(demultiplexed_path) if os.path.isdir(os.path.join(demultiplexed_path, d))]
-
-    for barcode_id in barcode_dirs:
-        barcode_dir = os.path.join(demultiplexed_path, barcode_id)
-        output_subdir = os.path.join(output_dir, barcode_id)
-        os.makedirs(output_subdir, exist_ok=True)
-
-        print(f"Processing barcode: {barcode_id}")
-
-        # Get fastq files
-        fastq_files = glob.glob(os.path.join(barcode_dir, "*.fastq"))
-        if not fastq_files:
-            print(f"No FASTQ files found in {barcode_dir}, skipping...")
-            continue
+    for dir in ${demultiplexed}/bar*/; do
+        if [ ! -d "\$dir" ]; then
+            echo "No barcode directories found"
+            exit 0
+        fi
         
-        align_bam = os.path.join(output_subdir, f"{barcode_id}_align_sorted.bam")
-        mapped_ids_file = os.path.join(output_subdir, "mapped_read_ids.txt")
-        pre_mapped_reads = os.path.join(output_subdir, f"{barcode_id}_pre_mapped_reads.fastq")
-        mapped_reads = os.path.join(output_subdir, f"{barcode_id}_mapped_reads.fastq")
-
-        # Align reads with Minimap2, then sort with Samtools
-        align_cmd = f"minimap2 -ax map-ont --eqx --MD --cs=long -t {cpu} {ref_copy_path} {' '.join(fastq_files)} | " \
-                    f"samtools sort -@ {cpu} -o {align_bam}"
-        subprocess.run(align_cmd, shell=True, check=True)
-
-        # Extract mapped read IDs
-        extract_ids_cmd = f"samtools view -F 4 {align_bam} | cut -f1 | sort | uniq > {mapped_ids_file}"
-        subprocess.run(extract_ids_cmd, shell=True, check=True)
-
-        # Retrieve original reads using seqkit
-        seqkit_cmd = f"seqkit grep -f {mapped_ids_file} {' '.join(fastq_files)} > {pre_mapped_reads}"
-        subprocess.run(seqkit_cmd, shell=True, check=True)
-
-        # Filter reads based on length using Filtlong
-        filtlong_cmd = f"filtlong --min_length {lower_length} --max_length {upper_length} {pre_mapped_reads} > {mapped_reads}"
-        subprocess.run(filtlong_cmd, shell=True, check=True)
-
-        print(f"Completed processing for barcode: {barcode_id}")
+        barcode_id=\$(basename \${dir%/})
+        echo "Processing barcode: \$barcode_id"
+        
+        # Check if directory contains fastq files
+        if ! ls \${dir}/*.fastq >/dev/null 2>&1; then
+            echo "No FASTQ files found in \$dir, skipping..."
+            continue
+        fi
+        
+        mkdir -p "mapped_reads/\${barcode_id}"
+        
+        # Concatenate all fastq files, map with minimap2, convert to bam, sort, and split
+        echo "Mapping reads for \$barcode_id..."
+        cat \${dir}/*.fastq | \
+        minimap2 -a -t ${cpu} ./reference.fasta /dev/stdin | \
+        samtools view -b | \
+        samtools sort -@ ${cpu} | \
+        bamtools split -stub "mapped_reads/\${barcode_id}/\${barcode_id}_align_sorted" -mapped
+        
+        # Convert mapped BAM to FASTQ
+        echo "Converting BAM to FASTQ for \$barcode_id..."
+        samtools bam2fq "mapped_reads/\${barcode_id}/\${barcode_id}_align_sorted.MAPPED.bam" > \
+        "mapped_reads/\${barcode_id}/\${barcode_id}_pre_mapped_reads.fastq"
+        
+        # Filter reads by length
+        echo "Filtering reads by length for \$barcode_id..."
+        filtlong --min_length ${lowerlength} --max_length ${upperlength} "mapped_reads/\${barcode_id}/\${barcode_id}_pre_mapped_reads.fastq" > \
+        "mapped_reads/\${barcode_id}/\${barcode_id}_mapped_reads.fastq"
+        
+        # Cleanup intermediate files
+        rm -f "mapped_reads/\${barcode_id}/\${barcode_id}_pre_mapped_reads.fastq"
+        
+        echo "Completed processing for \$barcode_id"
+    done
+    
+    # Clean up reference copy
+    rm -f reference.fasta
+    
+    echo "All barcodes processed successfully"
     """
 }
-
 
 /*
 * Run error_correction_vechat
@@ -822,24 +815,32 @@ process runMapping_2 {
 
     script:
     """
-    # Ensure the output directories exist
+    #!/usr/bin/env bash
+    set -e
+
+    # Create output directory
     mkdir -p mapped_reads/barcodex
 
-    # Align reads with Minimap2, then sort with Samtools
-    minimap2 -ax map-ont --eqx --MD --cs=long -t ${cpu} "${ref_genome}" ${chopped}/*.fastq | \
-        samtools sort -@ ${cpu} -o mapped_reads/barcodex/barcodex_align_sorted.bam || { echo 'Minimap2 or Samtools sort failed'; exit 1; }
+    # Copy reference genome to working directory
+    cp "${ref_genome}" ./reference.fasta
 
-    # Extract IDs of mapped reads (without sequence modification)
-        samtools view -F 4 mapped_reads/barcodex/barcodex_align_sorted.bam | cut -f1 | sort | uniq > mapped_reads/barcodex/mapped_read_ids.txt
-
-    # Retrieve original reads using seqkit
-        seqkit grep -f mapped_reads/barcodex/mapped_read_ids.txt ${chopped}/*.fastq > mapped_reads/barcodex/barcodex_pre_mapped_reads.fastq || { echo 'Seqkit filtering failed'; exit 1; }
-
-    # Filter reads based on length using Filtlong
-        filtlong --min_length ${lowerlength} --max_length ${upperlength} mapped_reads/barcodex/barcodex_pre_mapped_reads.fastq > mapped_reads/barcodex/barcodex_mapped_reads.fastq || { echo 'Filtlong filtering failed'; exit 1; }
-
-    # Clean up intermediate files if needed
-        rm mapped_reads/barcodex/barcodex_pre_mapped_reads.fastq
+    # Concatenate all fastq files, map with minimap2, convert to bam, sort, and split
+    cat ${chopped}/*.fastq | \
+    minimap2 -a -t ${cpu} ./reference.fasta /dev/stdin | \
+    samtools view -b | \
+    samtools sort -@ ${cpu} | \
+    bamtools split -stub mapped_reads/barcodex/barcodex_align_sorted -mapped
+    
+    # Convert mapped BAM to FASTQ
+    samtools bam2fq mapped_reads/barcodex/barcodex_align_sorted.MAPPED.bam > \
+    mapped_reads/barcodex/barcodex_pre_mapped_reads.fastq
+    
+    # Filter reads by length
+    filtlong --min_length ${lowerlength} --max_length ${upperlength} mapped_reads/barcodex/barcodex_pre_mapped_reads.fastq > \
+    mapped_reads/barcodex/barcodex_mapped_reads.fastq
+    
+    # Clean up reference copy
+    rm -f reference.fasta
     """
 }
 
@@ -999,7 +1000,7 @@ process runHaplotype {
     publishDir "${params.outfile}", mode: 'copy', overwrite: false
 
     input:
-    path corrected
+    path mapped
     val maxLD_floats
     val maxGD_floats
     val rmMisassembly_bool
@@ -1017,7 +1018,7 @@ process runHaplotype {
     """
     mkdir -p haplotype
 
-    for subdir in "${corrected}"/*; do
+    for subdir in "${mapped}"/*; do
         if [[ ! -d "\$subdir" || \$(basename "\$subdir") != bar* ]]; then
             continue
         fi
@@ -1026,31 +1027,31 @@ process runHaplotype {
         haplo_out="haplotype/\$subname"
         mkdir -p "\$haplo_out"
 
-        corrected_read=""
+        mapped_read=""
         for file in "\$subdir"/*; do
-            if [[ "\$file" == *_corrected.fastq ]]; then
-                fasta_out="\$subdir/\${subname}_corrected.fasta"
+            if [[ "\$file" == *_mapped_reads.fastq ]]; then
+                fasta_out="\$subdir/\${subname}_mapped_reads.fasta"
                 if command -v seqtk >/dev/null 2>&1; then
                     seqtk seq -A "\$file" > "\$fasta_out"
-                    corrected_read="\$fasta_out"
+                    mapped_read="\$fasta_out"
                 else
                     echo "seqtk not found. Cannot convert fastq to fasta. Skipping \$subdir..." >&2
                     continue 2
                 fi
                 break
             elif [[ "\$file" == *_corrected.fasta ]]; then
-                corrected_read="\$file"
+                mapped_read="\$file"
                 break
             fi
         done
 
-        if [[ -z "\$corrected_read" ]]; then
-            echo "No corrected read file found in \$subdir. Skipping..." >&2
+        if [[ -z "\$mapped_read" ]]; then
+            echo "No mapped read file found in \$subdir. Skipping..." >&2
             continue
         fi
 
         if ! timeout 1h /app/Strainline/src/strainline.sh \\
-            -i "\$corrected_read" \\
+            -i "\$mapped_read" \\
             -p ont \\
             --maxLD ${maxLD_floats} \\
             --maxGD ${maxGD_floats} \\
@@ -1101,23 +1102,22 @@ workflow {
         runDoradodemultiplexing(runChopper.out.choped, params.cpu, params.barcods)
         runMapping(runDoradodemultiplexing.out.demultiplexed, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
         
-        // Run error correction based on selected tool
-        if (params.error_correction_tool == 'vechat') {
-            runErrcorrectVechat(runMapping.out.mapped, params.cpu, params.gpu)
-        } else if (params.error_correction_tool == 'rattle') {
-            runErrcorrectRattle(runMapping.out.mapped, params.cpu, params.repr_percentile, params.score_threshold, params.kmer_size)
-        }
-
-        // Get the appropriate corrected reads channel
-        def corrected_reads = params.error_correction_tool == 'vechat' ? runErrcorrectVechat.out.corrected : runErrcorrectRattle.out.corrected
- 
         if (params.pipeline == 'assembly') {
+            // Run error correction based on selected tool
+            if (params.error_correction_tool == 'vechat') {
+                runErrcorrectVechat(runMapping.out.mapped, params.cpu, params.gpu)
+            } else if (params.error_correction_tool == 'rattle') {
+                runErrcorrectRattle(runMapping.out.mapped, params.cpu, params.repr_percentile, params.score_threshold, params.kmer_size)
+            }
+
+            // Get the appropriate corrected reads channel
+            def corrected_reads = params.error_correction_tool == 'vechat' ? runErrcorrectVechat.out.corrected : runErrcorrectRattle.out.corrected
             runAssembly(corrected_reads, params.cpu, params.genomesize)
             runPolish_medaka(runAssembly.out.draftgenome, runMapping.out.mapped, params.cpu)
         }
-
-         else if (params.pipeline == 'haplotype') {
-            runHaplotype(corrected_reads, params.maxLD_floats, params.maxGD_floats, params.rmMisassembly_bool, params.minAbun_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs, params.cpu)
+        else if (params.pipeline == 'haplotype') {
+            // Skip error correction for haplotype pipeline
+            runHaplotype(runMapping.out.mapped, params.maxLD_floats, params.maxGD_floats, params.rmMisassembly_bool, params.minAbun_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs, params.cpu)
             runPolish_medaka(runHaplotype.out.draftgenome, runMapping.out.mapped, params.cpu)
         }
         runPolish_pilon(runPolish_medaka.out.medaka, runMapping.out.mapped, params.min_mq, params.cpu)
@@ -1126,23 +1126,22 @@ workflow {
     else if (params.demultiplexing == 'OFF') {
         runMapping_2(runChopper.out.choped, params.ref_genome, params.lowerlength, params.upperlength, params.cpu)
         
-        // Run error correction based on selected tool
-        if (params.error_correction_tool == 'vechat') {
-            runErrcorrectVechat(runMapping_2.out.mapped, params.cpu, params.gpu)
-        } else if (params.error_correction_tool == 'rattle') {
-            runErrcorrectRattle(runMapping_2.out.mapped, params.cpu, params.repr_percentile, params.score_threshold, params.kmer_size)
-        }
-
-        // Get the appropriate corrected reads channel
-        def corrected_reads = params.error_correction_tool == 'vechat' ? runErrcorrectVechat.out.corrected : runErrcorrectRattle.out.corrected
-    
         if (params.pipeline == 'assembly') {
+            // Run error correction based on selected tool
+            if (params.error_correction_tool == 'vechat') {
+                runErrcorrectVechat(runMapping_2.out.mapped, params.cpu, params.gpu)
+            } else if (params.error_correction_tool == 'rattle') {
+                runErrcorrectRattle(runMapping_2.out.mapped, params.cpu, params.repr_percentile, params.score_threshold, params.kmer_size)
+            }
+
+            // Get the appropriate corrected reads channel
+            def corrected_reads = params.error_correction_tool == 'vechat' ? runErrcorrectVechat.out.corrected : runErrcorrectRattle.out.corrected
             runAssembly(corrected_reads, params.cpu, params.genomesize)
             runPolish_medaka(runAssembly.out.draftgenome, runMapping_2.out.mapped, params.cpu)
         }
-
         else if (params.pipeline == 'haplotype') {
-            runHaplotype(corrected_reads, params.maxLD_floats, params.maxGD_floats, params.rmMisassembly_bool, params.minAbun_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs, params.cpu)
+            // Skip error correction for haplotype pipeline
+            runHaplotype(runMapping_2.out.mapped, params.maxLD_floats, params.maxGD_floats, params.rmMisassembly_bool, params.minAbun_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs, params.cpu)
             runPolish_medaka(runHaplotype.out.draftgenome, runMapping_2.out.mapped, params.cpu)
         }
         runPolish_pilon(runPolish_medaka.out.medaka, runMapping_2.out.mapped, params.min_mq, params.cpu)
