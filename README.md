@@ -15,9 +15,7 @@ BonoboFlow is a Nextflow pipeline for reproducible and precise execution of vira
 - Demultiplexing with support for multiple barcoding kits
 - Read quality filtering and length selection
 - Error correction using either Rattle or Vechat
-- Genome assembly and haplotype reconstruction
-- GPU acceleration support for compatible processes
-- Comprehensive QC reporting
+- Genome assembly or haplotype reconstruction
 - Automatic container detection and configuration (Docker/Singularity)
 - Flexible resource allocation for different computational requirements
 - DAG visualization for workflow monitoring
@@ -28,7 +26,6 @@ BonoboFlow is a Nextflow pipeline for reproducible and precise execution of vira
 - Nextflow (version 24.04.2)
 - Docker or Singularity
 - Conda (recommended for environment management)
-- NVIDIA GPU (optional, for accelerated processing)
 
 ### Quick Start
 ```bash
@@ -46,7 +43,7 @@ nextflow run BonoboFlow.nf --help
 
 BonoboFlow automatically detects and uses either Docker or Singularity:
 - Docker: Runs with user permissions using `-u $(id -u):$(id -g)`
-- Singularity: Supports NVIDIA GPU acceleration with `--nv` option
+- Singularity: Runs Docker images
 - Containers are pulled automatically for each process
 - Default container images:
   - Main pipeline: `nchis09/bonobo_image:v1`
@@ -58,12 +55,10 @@ BonoboFlow automatically detects and uses either Docker or Singularity:
 ### Default Settings
 - CPU cores: 50
 - Memory: 50 GB
-- GPU support: Optional (controlled via `--gpu` parameter)
 
 ### Process-Specific Resources
 - Main pipeline processes: Up to 300 GB memory with automatic retry on memory errors
 - Basecalling and demultiplexing: Configurable based on input parameters
-- All processes support GPU acceleration when available
 
 ## Usage
 
@@ -104,7 +99,6 @@ nextflow run BonoboFlow.nf -resume \
 |-----------|---------|-------------|
 | `--cpu` | 50 | Number of CPUs to use |
 | `--memory` | "50 GB" | Memory allocation per process |
-| `--gpu` | 0 | Enable GPU acceleration (0/1) |
 | `--split_size` | 10000 | Split size for parallel processing |
 
 #### Quality Control
@@ -161,12 +155,6 @@ nextflow run BonoboFlow.nf -resume \
   - `BonoboFlow_report.html`: Detailed execution report
   - `BonoboFlow_DAG.html`: Pipeline workflow visualization
 
-## GPU Support
-
-GPU acceleration is available for compatible processes (Dorado, Vechat) when enabled:
-- Set `params.gpu = "1"` for GPU support
-- Requires NVIDIA GPU and proper drivers
-- Automatically configures container GPU options
 
 ## Troubleshooting
 
