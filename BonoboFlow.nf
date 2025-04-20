@@ -60,25 +60,25 @@ Mandatory Arguments:
 
 Optional Arguments:
     --cpu                    Number of CPUs to use (default: 8)
-    --memory                 Memory allocation per process (default: 30 GB)
+    --maxmem                 Memory allocation per process (default: 32 GB)
     --pipeline               Pipeline mode: "assembly" or "haplotype" (default: assembly)
     --phred                  Minimum sequence quality score (default: 12)
-    --lowerlength           Minimum read length (default: 1000)
-    --upperlength           Maximum read length (default: 20000)
-    --genomesize            Expected genome size, assembly mode only (default: 5k)
+    --lowerlength            Minimum read length (default: 1000)
+    --upperlength            Maximum read length (default: 20000)
+    --genomesize             Expected genome size, assembly mode only (default: 5k)
 
 Basecalling:
     --basecalling           Enable/disable basecalling (default: OFF)
-    --basecallers          Tool choice: "basecaller" or "duplex" (default: basecaller)
+    --basecallers           Tool choice: "basecaller" or "duplex" (default: basecaller)
     --model                 Model type: "sup", "fast", or "hac" (default: sup)
 
 Barcoding:
-    --barcods              Barcoding kits used (default: "EXP-NBD104 EXP-NBD114")
+    --barcods               Barcoding kits used (default: "EXP-NBD104 EXP-NBD114")
     --min_score_rear_barcode   Minimum rear barcode quality (default: 75)
     --min_score_front_barcode  Minimum front barcode quality (default: 75)
 
 Error Correction:
-    --error_correction_tool    Choose between "vechat" or "rattle" (default: vechat)
+    --error_correction_tool   Choose between "vechat" or "rattle" (default: vechat)
     --repr_percentile         Cluster representative percentile (default: 0.3)
     --score_threshold        Cluster similarity threshold (default: 0.2)
     --kmer_size             K-mer size for clustering (default: 12)
@@ -433,16 +433,38 @@ process runMapping {
         samtools view -b | \
         samtools sort -@ ${cpu} | \
         bamtools split -stub "mapped_reads/\${barcode_id}/\${barcode_id}_align_sorted" -mapped
+
+        # Check if the mapped BAM file exists and is not empty
+        mapped_bam="mapped_reads/\${barcode_id}/\${barcode_id}_align_sorted.MAPPED.bam"
+        if [ ! -s "\$mapped_bam" ]; then
+            echo "No mapped reads found for \$barcode_id, removing directory..."
+            rm -rf "mapped_reads/\${barcode_id}"
+            continue
+        fi
         
         # Convert mapped BAM to FASTQ
         echo "Converting BAM to FASTQ for \$barcode_id..."
-        samtools bam2fq "mapped_reads/\${barcode_id}/\${barcode_id}_align_sorted.MAPPED.bam" > \
+        samtools bam2fq "\$mapped_bam" > \
         "mapped_reads/\${barcode_id}/\${barcode_id}_pre_mapped_reads.fastq"
+
+        # Check if the converted FASTQ is empty
+        if [ ! -s "mapped_reads/\${barcode_id}/\${barcode_id}_pre_mapped_reads.fastq" ]; then
+            echo "No reads in FASTQ for \$barcode_id, removing directory..."
+            rm -rf "mapped_reads/\${barcode_id}"
+            continue
+        fi
         
         # Filter reads by length
         echo "Filtering reads by length for \$barcode_id..."
         filtlong --min_length ${lowerlength} --max_length ${upperlength} "mapped_reads/\${barcode_id}/\${barcode_id}_pre_mapped_reads.fastq" > \
         "mapped_reads/\${barcode_id}/\${barcode_id}_mapped_reads.fastq"
+
+        # Check if the final filtered FASTQ is empty
+        if [ ! -s "mapped_reads/\${barcode_id}/\${barcode_id}_mapped_reads.fastq" ]; then
+            echo "No reads passed length filtering for \$barcode_id, removing directory..."
+            rm -rf "mapped_reads/\${barcode_id}"
+            continue
+        fi
         
         # Cleanup intermediate files
         rm -f "mapped_reads/\${barcode_id}/\${barcode_id}_pre_mapped_reads.fastq"
@@ -571,6 +593,7 @@ process runPolish_medaka {
             command1 = f"medaka_consensus -i {mapped_file} \
                              -d {subdir_path}/{subdir}_contigs.fasta \
                              -o {output_subdir} \
+                             -m r10_min_high_g340 \
                              -t ${cpu}"
             subprocess.run(command1, shell=True, check=True)
 
@@ -688,7 +711,7 @@ process runProovframe {
     publishDir "${params.outfile}", mode: "copy", overwrite: false
 
     input:
-    path(pilon)
+    path(medaka)
     
     output:
     path("proovframe"), emit: final_seq
@@ -700,7 +723,7 @@ process runProovframe {
     import os
     import subprocess
 
-    polished = "${pilon}"
+    polished = "${medaka}"
 
     output_dir = os.path.join(os.path.dirname(polished), "proovframe")
     os.makedirs(output_dir, exist_ok=True)
@@ -719,9 +742,9 @@ process runProovframe {
         # Run the proovframe 
         command1 = f"proovframe map -a /app/db/viral_aa/viral_aa_ref_Seq.fasta \
                     -o {output_subdir}/{subdir}.tsv \
-                    {subdir_path}/{subdir}_polishing.fasta && \
+                    {subdir_path}/{subdir}_polish_medaka.fasta && \
                     proovframe fix -o {output_subdir}/{subdir}.fasta \
-                    {subdir_path}/{subdir}_polishing.fasta \
+                    {subdir_path}/{subdir}_polish_medaka.fasta \
                     {output_subdir}/{subdir}.tsv"
         subprocess.run(command1, shell=True, check=True)
     """
@@ -838,6 +861,12 @@ process runMapping_2 {
     # Filter reads by length
     filtlong --min_length ${lowerlength} --max_length ${upperlength} mapped_reads/barcodex/barcodex_pre_mapped_reads.fastq > \
     mapped_reads/barcodex/barcodex_mapped_reads.fastq
+    
+    # Check if the final filtered FASTQ is empty
+    if [ ! -s "mapped_reads/barcodex/barcodex_mapped_reads.fastq" ]; then
+        echo "No reads passed length filtering, removing directory..."
+        rm -rf "mapped_reads/barcodex"
+    fi
     
     # Clean up reference copy
     rm -f reference.fasta
@@ -992,11 +1021,10 @@ process runAssembly {
 * Run haplotype
 */
 process runHaplotype {
-
     tag { "genome_haplotype" }
     label 'bonobo_img'
     errorStrategy 'ignore'
-
+    time '24h'       // Allow up to 24 hours runtime
     publishDir "${params.outfile}", mode: 'copy', overwrite: false
 
     input:
@@ -1010,6 +1038,7 @@ process runHaplotype {
     val minseedlens
     val maxohs
     val cpu
+    val maxmem
 
     output:
     path "haplotype", emit: draftgenome
@@ -1063,6 +1092,7 @@ process runHaplotype {
             --minSeedLen ${minseedlens} \\
             --maxOH ${maxohs} \\
             --threads ${cpu} \\
+            --maxMem ${maxmem} \\
             -o "\$haplo_out" 2>&1; then
             status=\$?
             if [ \$status -eq 124 ]; then
@@ -1082,7 +1112,6 @@ process runHaplotype {
     done
     """
 }
-
 
 /*
 * Workflow
@@ -1114,13 +1143,14 @@ workflow {
             def corrected_reads = params.error_correction_tool == 'vechat' ? runErrcorrectVechat.out.corrected : runErrcorrectRattle.out.corrected
             runAssembly(corrected_reads, params.cpu, params.genomesize)
             runPolish_medaka(runAssembly.out.draftgenome, runMapping.out.mapped, params.cpu)
+            runProovframe(runPolish_medaka.out.medaka)
         }
         else if (params.pipeline == 'haplotype') {
             // Skip error correction for haplotype pipeline
-            runHaplotype(runMapping.out.mapped, params.maxLD_floats, params.maxGD_floats, params.rmMisassembly_bool, params.minAbun_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs, params.cpu)
+            runHaplotype(runMapping.out.mapped, params.maxLD_floats, params.maxGD_floats, params.rmMisassembly_bool, params.minAbun_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs, params.cpu, params.maxmem)
             runPolish_medaka(runHaplotype.out.draftgenome, runMapping.out.mapped, params.cpu)
+            runProovframe(runPolish_medaka.out.medaka)
         }
-        runPolish_pilon(runPolish_medaka.out.medaka, runMapping.out.mapped, params.min_mq, params.cpu)
     }
 
     else if (params.demultiplexing == 'OFF') {
@@ -1138,15 +1168,21 @@ workflow {
             def corrected_reads = params.error_correction_tool == 'vechat' ? runErrcorrectVechat.out.corrected : runErrcorrectRattle.out.corrected
             runAssembly(corrected_reads, params.cpu, params.genomesize)
             runPolish_medaka(runAssembly.out.draftgenome, runMapping_2.out.mapped, params.cpu)
+            runProovframe(runPolish_medaka.out.medaka)
         }
         else if (params.pipeline == 'haplotype') {
             // Skip error correction for haplotype pipeline
-            runHaplotype(runMapping_2.out.mapped, params.maxLD_floats, params.maxGD_floats, params.rmMisassembly_bool, params.minAbun_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs, params.cpu)
+            runHaplotype(runMapping_2.out.mapped, params.maxLD_floats, params.maxGD_floats, params.rmMisassembly_bool, params.minAbun_floats, params.topks, params.minovlplens, params.minseedlens, params.maxohs, params.cpu, params.maxmem)
             runPolish_medaka(runHaplotype.out.draftgenome, runMapping_2.out.mapped, params.cpu)
+            runProovframe(runPolish_medaka.out.medaka)
         }
-        runPolish_pilon(runPolish_medaka.out.medaka, runMapping_2.out.mapped, params.min_mq, params.cpu)
     }
-
-   runProovframe(runPolish_pilon.out.pilon)
    runSeqrenaming(runProovframe.out.final_seq, params.sample_id)
+}
+
+workflow.onComplete {
+    println "="*80
+    println "Final Consensus Sequences Are Saved In:"
+    println "${params.outfile}/final_reports"
+    println "="*80
 }
