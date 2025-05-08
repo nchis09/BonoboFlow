@@ -89,7 +89,7 @@ nextflow run BonoboFlow.nf -resume \
 | `--cpu` | 8 | Number of CPUs to use |
 | `--memory` | "30 GB" | Memory allocation per process |
 | `--pipeline` | "assembly" | Pipeline mode: "assembly" or "haplotype" |
-| `--phred` | 12 | Minimum sequence quality score |
+| `--phred` | 6 | Minimum sequence quality score |
 | `--lowerlength` | 1000 | Minimum read length |
 | `--upperlength` | 20000 | Maximum read length |
 | `--genomesize` | "5k" | Expected genome size (assembly mode only) |
@@ -119,7 +119,7 @@ nextflow run BonoboFlow.nf -resume \
 #### Barcoding Options
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `--barcods` | "EXP-NBD104 EXP-NBD114" | Barcoding kits used |
+| `--barcods` | "SQK-NBD114-96" | Barcoding kits used |
 | `--min_score_rear_barcode` | 75 | Minimum rear barcode quality |
 | `--min_score_front_barcode` | 75 | Minimum front barcode quality |
 

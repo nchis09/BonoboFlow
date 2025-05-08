@@ -166,7 +166,7 @@ process runDoradobasecalling {
     mkdir -p basecalled
     
     # Run the dorado command
-    dorado basecaller --device "cuda:all" --threads "${cpu}" "${model}" "${raw_file}" > "basecalled/basecalled.fastq"
+    dorado basecaller --emit-fastq "${model}" "${raw_file}" > "basecalled/basecalled.fastq"
     """
 }
 
