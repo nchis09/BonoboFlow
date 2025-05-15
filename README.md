@@ -46,15 +46,16 @@ BonoboFlow automatically detects and uses either Docker or Singularity:
 - Singularity: Runs Docker images
 - Containers are pulled automatically for each process
 - Default container images:
-  - Main pipeline: `nchis09/bonobo_image:v1`
-  - Basecalling: `nanoporetech/dorado:latest`
-  - Barcoding: `nanozoo/guppy_cpu:5.0.7-1`
+  - Main pipeline: `nchis09/bonobo_image:v2`
+  - Basecalling/Barcoding: `nanoporetech/dorado:latest`
+  - Assembly corrections: `nanoporetech/medaka:latest`
+  - Prooveframe: `nanoporetech/prooveframe:latest`
 
 ## Resource Configuration
 
 ### Default Settings
-- CPU cores: 50
-- Memory: 50 GB
+- CPU cores: 8
+- Memory: 16 GB
 
 ### Process-Specific Resources
 - Main pipeline processes: Up to 300 GB memory with automatic retry on memory errors
@@ -87,7 +88,7 @@ nextflow run BonoboFlow.nf -resume \
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `--cpu` | 8 | Number of CPUs to use |
-| `--memory` | "30 GB" | Memory allocation per process |
+| `--memory` | "16 GB" | Memory allocation per process |
 | `--pipeline` | "assembly" | Pipeline mode: "assembly" or "haplotype" |
 | `--phred` | 6 | Minimum sequence quality score |
 | `--lowerlength` | 1000 | Minimum read length |
@@ -136,7 +137,7 @@ nextflow run BonoboFlow.nf -resume \
 |-----------|---------|-------------|
 | `--maxLD_floats` | 0.001 | Maximum local divergence |
 | `--maxGD_floats` | 0.01 | Maximum global divergence |
-| `--minAbun_floats` | 0.02 | Minimum abundance threshold |
+| `--minAbun_floats` | 0.01 | Minimum abundance threshold |
 | `--rmMisassembly_bool` | True | Remove misassemblies |
 | `--correctErr` | False | Error correction for input reads |
 | `--topks` | 200 | Number of seed reads for haplotype construction (higher value = more seed reads) |
@@ -149,11 +150,12 @@ nextflow run BonoboFlow.nf -resume \
 
 ## Output Files
 
-- `consensus*.fasta`: Consensus sequences per sample
+- `consensus*.fasta`: Final consensus sequences per sample
 - `final_reports/`: Directory containing:
   - `BonoboFlow_timeline.html`: Process execution timeline
   - `BonoboFlow_report.html`: Detailed execution report
   - `BonoboFlow_DAG.html`: Pipeline workflow visualization
+  - `consensus*.fasta`: Final consensus sequences per sample
 
 
 ## Troubleshooting
@@ -169,4 +171,4 @@ This project is licensed under the GNU General Public License v3.0.
 
 ## Citation
 
-**This work is currently under peer review. A formal citation will be provided upon publication.**
+**Christian Ndekezi, Drake Byamukama, Frank Kato, Denis Omara, et al, BonoboFlow: Viral Genome Assembly and Haplotype Reconstruction from Nanopore Reads, Bioinformatics Advances, 2025;, vbaf115, https://doi.org/10.1093/bioadv/vbaf115**
